@@ -26,18 +26,20 @@ f_FD = open(path + fdDict)
 f_demand = open(path + dDict)
 F_Fdict = cPickle.load(f_FF)
 F_Ddict = cPickle.load(f_FD)
+
 dDict = cPickle.load(f_demand)
 facil_shp = generateGeometry(facilities_f)
 demand_shp = generateGeometry(demands_f)
-warehouses = []    #id_f of warehouses
+warehouses_ID = []    #id_f of warehouses
 solution_sites = []
 covered_demand = []
 objective_value = 0
 p = 0   #actual p - no. warehouses 
-t0 = 0
-max_iter = 0
-tf = 0
+t0 = 0   #end temperature
+max_iter = 0   #iteration limit
+tf = 0         
 cf = 0.2
+remove_percent = 0.2 
 fd_fullPayload = 5 
 fd_empty = 10
 fd_delivery = 3.33 
@@ -115,16 +117,21 @@ solution_sites.extend(warehouses)
 isol_chk = chk_isolation(solution_sites)
 while isol_chk == True:
     while len(solution_sites) < p:
-        random_pool = []
-        for i in solution_sites:
-            random_pool.extend(F_Fdict[i])
-        random_pool = list(set(random_pool))
+        random_pool = resctricted_cadidates(solution_sites)
         solution_sites.append(random.choice(random_pool))
     isol_chk = chk_isolation(solution_sites)
 
 
-while t0 > 0.5:
 
+
+while t0 > 0.5:
+    remove_number = int(remove_percent * p)
+    for i in range(remove_number):
+        facils = [x for x in solution_sites if not x in warehouses_ID]
+        solution_sites.remove(random.choice(facils))
+    
+        
+            
     
     
         
