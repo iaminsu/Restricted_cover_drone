@@ -11,8 +11,11 @@ path = "F:\\data\\rechargeable path\\"
 demand = "sample_demand.shp"
 
 demand_dict = {}
+
 id_demand = "ID_d"
+
 demand_f = "demand"
+
 
 #create feature layer 
 demand_lyr = 'demand_lyr'

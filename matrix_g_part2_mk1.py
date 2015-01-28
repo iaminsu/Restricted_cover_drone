@@ -9,12 +9,13 @@ from collections import defaultdict
 
 
 path = ""
-facilities = ""
-demands = ""
-obstacles = ""
-fd_fullPayload = 5 
-fd_empty = 10
-fd_delivery = 3.33 
+
+facilities = "sample_sites_2_test.shp"
+demands = "sample_demand_2_test.shp"
+obstacles = "obstacles"
+fd_fullPayload = 2.5 
+fd_empty = 5
+fd_delivery = 1.665
 
 demand_amounts_d = {}
 #loading demand_amounts_d 
@@ -111,16 +112,21 @@ def splitBoundary(lineSet, poly):
 
 
 
-def createConvexPath_FF(pair):
-    #For F_F pair only 
-    #return facil ID if ESP distance to target facil is less than fd_fullPayload 
+def createConvexPath(pair, case):
+    
+    
     print pair[1]
     odPointsList = ((pair[0][0].x, pair[0][0].y), (pair[0][1].x, pair[0][1].y))
     st_line = LineString(odPointsList)
     labeledObstaclePoly = []
     totalConvexPathList = {}
-    if st_line.length > fd_fullPayload * 5280:
-        return 0
+    if case == 'ff':
+        if st_line.length > fd_fullPayload * 5280:
+            return 0
+    elif case == "fd":
+        if st_line.length > fd_delivery * 5280:
+            return 0
+    
         
     dealtArcList = {}
     totalConvexPathList[odPointsList] = LineString(odPointsList)
@@ -529,11 +535,16 @@ def createConvexPath_FF(pair):
     total_length = 0
     for line in targetShp:
         total_length += line.length
-    if total_length <= fd_fullPayload:
-        return 1
-    else:
-        return 0
-    
+    if case == "ff":
+        if total_length <= fd_fullPayload:
+            return 1
+        else:
+            return 0
+    else case == 'fd':
+        if total_length <= fd_delivery:
+            return 1
+        else:
+            return 0 
     
 
 
@@ -731,12 +742,6 @@ def createConvexPath_FD(pair):
                                 #if [line[1], line[0]] not in totalConvexPathList:
                                     #totalConvexPathList.append(line)
 
-            #w = shapefile.Writer(shapefile.POLYLINE)
-            #w.field('nem')
-            #for line in totalConvexPathList:
-                #w.line(parts=[[ list(x) for x in line ]])
-                #w.record('ff')
-            #w.save(self.path + "graph2_" + str(idx_loop1) + self.version_name) 
             t7e = time.time()
             time_loop1_crossingDict += t7e - t7s
             #new lines            
@@ -796,12 +801,7 @@ def createConvexPath_FD(pair):
                     terminate2 = 1
                     continue
                 else:
-                    #w = shapefile.Writer(shapefile.POLYLINE)
-                    #w.field('nem')
-                    #for line in crossingDict:
-                        #w.line(parts=[[ list(x) for x in line ]])
-                        #w.record('ff')
-                    #w.save(self.path + "crossingDict_" + str(idx_loop1) + "_"+ str(idx_loop2) +"_"+ self.version_name)                        
+                    
                     t4s = time.time()
                     
                     for tLine in crossingDict.keys():
@@ -919,12 +919,6 @@ def createConvexPath_FD(pair):
                     t4e = time.time()
                     time_convexLoop += t4e - t4s
                     #end of else
-                #w = shapefile.Writer(shapefile.POLYLINE)
-                #w.field('nem')
-                #for line in impededPathList:
-                    #w.line(parts=[[ list(x) for x in line ]])
-                    #w.record('ff')
-                #w.save(path + "After_graph_" + str(idx_loop1) + "_"+ str(idx_loop2) +"_"+ version_name)
                 #end of while2
             for line in impededPathList:
                 if not totalConvexPathList.has_key(line):
@@ -997,19 +991,23 @@ for i in facilPoints:
         if not i == j:
             F_F_pairs.append((i,j))
             
-f = open(path + "Results" + version_name + facilities + "_" + demands +"_"+obstacles+".txt", "w")
+f = open(path + "FF_Dict" + version_name + facilities + "_" + demands +"_"+obstacles+".txt", "w")
+f2 = open(path + "FD_Dict" + version_name + facilities + "_" + demands +"_"+obstacles+".txt", "w")
 facil_dict = defaultdict(list)
 facil_demand_dict = defaultdict(list)
 for pair in F_F_pairs:
-    result = createConvexPath_FF(pair)
+    result = createConvexPath(pair, "ff")
     if result == 1:
         facil_dict[pair[0]].append(pair[1])
 
+print "facil dict completed"
+
 for pair in F_D_Pairs:
-    result = createConvexPath(pair)
+    result = createConvexPath(pair, "fd")
     if result == 1:
         facil_demand_dict[pair[0]].append([pair[1], demand_amounts_d[pair[1]]])
         
-
+print "demand dict completed"
             
-    
+cPickle.dump(facil_dict, f)
+cPickle.dump(facil_demand_dict, f2)
