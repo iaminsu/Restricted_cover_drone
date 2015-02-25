@@ -2,6 +2,9 @@
 
 #Including containing case & spatial filtering method 
 
+#Mk2
+# - deriving 2nd dictionary for additional distance restriction: prevent locating facilities too close 
+
 
 import pysal,  shapefile, networkx, time, cPickle
 from shapely.geometry import Point, Polygon, LineString, MultiPoint, MultiPolygon
@@ -122,10 +125,10 @@ def createConvexPath(pair, case):
     totalConvexPathList = {}
     if case == 'ff':
         if st_line.length > fd_fullPayload * 5280:
-            return 0
+            return 0, 0, None
     elif case == "fd":
         if st_line.length > fd_delivery * 5280:
-            return 0
+            return 0, 0, None
     
         
     dealtArcList = {}
@@ -147,12 +150,7 @@ def createConvexPath(pair, case):
         idx_loop1 += 1
         
         t6s = time.time()
-        #w = shapefile.Writer(shapefile.POLYLINE)
-        #w.field('nem')
-        #for line in totalConvexPathList:
-            #w.line(parts=[[ list(x) for x in line ]])
-            #w.record('ff')
-        #w.save(path + "graph_" + str(idx_loop1) + version_name)
+
 
         totalGrpah = createGraph(totalConvexPathList.keys())
         spatial_filter_n = networkx.dijkstra_path(totalGrpah, odPointsList[0], odPointsList[1])            
@@ -160,17 +158,7 @@ def createConvexPath(pair, case):
         for i in xrange(len(spatial_filter_n)-1):
             spatial_filter.append([spatial_filter_n[i], spatial_filter_n[i+1]])
 
-        #w = shapefile.Writer(shapefile.POLYLINE)
-        #w.field('nem')
-        #for line in spatial_filter:
-            #w.line(parts=[[ list(x) for x in line ]])
-            #w.record('ff')
-        #w.save(self.path + "spatial Filter_" + str(idx_loop1) + self.version_name)
-        
-        #sp_length = 0
-        #for j in spatial_filter:
-            #sp_length += LineString(j).length        
-        #sp_l_set.append(sp_length)
+
         
         crossingDict = defaultdict(list)
         
@@ -302,15 +290,7 @@ def createConvexPath(pair, case):
                             if not totalConvexPathList.has_key(line):
                                 if not totalConvexPathList.has_key((line[1],line[0])):
                                     totalConvexPathList[line] = subConvexPathList[line]                                #if line not in totalConvexPathList:
-                                #if [line[1], line[0]] not in totalConvexPathList:
-                                    #totalConvexPathList.append(line)
-
-            #w = shapefile.Writer(shapefile.POLYLINE)
-            #w.field('nem')
-            #for line in totalConvexPathList:
-                #w.line(parts=[[ list(x) for x in line ]])
-                #w.record('ff')
-            #w.save(self.path + "graph2_" + str(idx_loop1) + self.version_name) 
+                                
             t7e = time.time()
             time_loop1_crossingDict += t7e - t7s
             #new lines            
@@ -370,12 +350,7 @@ def createConvexPath(pair, case):
                     terminate2 = 1
                     continue
                 else:
-                    #w = shapefile.Writer(shapefile.POLYLINE)
-                    #w.field('nem')
-                    #for line in crossingDict:
-                        #w.line(parts=[[ list(x) for x in line ]])
-                        #w.record('ff')
-                    #w.save(self.path + "crossingDict_" + str(idx_loop1) + "_"+ str(idx_loop2) +"_"+ self.version_name)                        
+                    
                     t4s = time.time()
                     
                     for tLine in crossingDict.keys():
@@ -493,12 +468,7 @@ def createConvexPath(pair, case):
                     t4e = time.time()
                     time_convexLoop += t4e - t4s
                     #end of else
-                #w = shapefile.Writer(shapefile.POLYLINE)
-                #w.field('nem')
-                #for line in impededPathList:
-                    #w.line(parts=[[ list(x) for x in line ]])
-                    #w.record('ff')
-                #w.save(path + "After_graph_" + str(idx_loop1) + "_"+ str(idx_loop2) +"_"+ version_name)
+
                 #end of while2
             for line in impededPathList:
                 if not totalConvexPathList.has_key(line):
@@ -507,7 +477,7 @@ def createConvexPath(pair, case):
             #totalConvexPathList.extend(impededPathList)
     #no obstruction 
     if no_obs == True:
-        return 1
+        return 1, st_line.length, st_line
     
     totalGraph = createGraph(totalConvexPathList.keys())
     esp_n = networkx.dijkstra_path(totalGraph, odPointsList[0], odPointsList[1])
@@ -523,9 +493,11 @@ def createConvexPath(pair, case):
         #w.line(parts=[[ list(x) for x in line ]])
         #w.record('ff')
     #w.save(path + "totalpath" + version_name + "%d" % pair[1] )              
+
     w = shapefile.Writer(shapefile.POLYLINE)
     w.field('nem')
     for line in esp:
+        
         w.line(parts=[[ list(x) for x in line ]])
         w.record('ff')
     w.save(path + "ESP_" + version_name + "%d" % pair[1])
@@ -537,14 +509,14 @@ def createConvexPath(pair, case):
         total_length += line.length
     if case == "ff":
         if total_length <= fd_fullPayload:
-            return 1
+            return 1, total_length, esp
         else:
-            return 0
+            return 0, 0
     elif case == 'fd':
         if total_length <= fd_delivery:
-            return 1
+            return 1, total_length, None
         else:
-            return 0 
+            return 0, 0 
     
 
 
@@ -584,18 +556,28 @@ f = open(path + "FF_Dict" + version_name + facilities + "_" + demands +"_"+obsta
 f2 = open(path + "FD_Dict" + version_name + facilities + "_" + demands +"_"+obstacles+".txt", "w")
 facil_dict = defaultdict(list)
 facil_demand_dict = defaultdict(list)
+esp_list = []
 for pair in F_F_pairs.keys():
     result = createConvexPath(F_F_pairs[pair], "ff")
-    if result == 1:
-        facil_dict[pair[0]].append(pair[1])
+    if result[0] == 1:
+        facil_dict[pair[0]].append((pair[1], result[1]))
+        esp_list.append(result[2])
+w = shapefile.Writer(shapefile.POLYLINE)
+w.field('nem')
+no_edges = 0
+for esp in esp_list:
+    for line in esp:
+        w.line(parts=[[ list(x) for x in line ]])
+        w.record('ff')
+w.save(path + "feasible_path.shp")    
 cPickle.dump(facil_dict, f)
 f.close()
 print "facil dict completed"
 
 for pair in F_D_Pairs.keys():
     result = createConvexPath(F_D_Pairs[pair], "fd")
-    if result == 1:
-        facil_demand_dict[pair[0]].append(pair[1] )
+    if result[0] == 1:
+        facil_demand_dict[pair[0]].append((pair[1], result[1]))
         
 print "demand dict completed"
             

@@ -8,16 +8,16 @@ from shapely.geometry import Point, Polygon, LineString, MultiPoint, MultiPolygo
 from collections import defaultdict
 
 
-path = "/Users/insuhong/Dropbox/research/Distance restricted covering model/Locating recharging station/data/"
+path = "Users/insuhong/Dropbox/research/Distance restricted covering model/Locating recharging station/data/“
 
-facilities = "sample_sites_2.shp"
-demands = "sample_demand_2.shp"
-obstacles = "obstacles"
-fd_fullPayload = 5 
-fd_empty = 10
-fd_delivery = 3.33
-f = open(path+ "demands.txt")
-demand_amounts_d = cPickle.load(f)
+facilities = "sample_sites.shp"
+demands = "sample_demand.shp"
+obstacles = ""
+fd_fullPayload = 2.5 
+fd_empty = 5
+fd_delivery = 1.665
+
+demand_amounts_d = {}
 #loading demand_amounts_d 
 
 def generateGeometry(in_shp):
@@ -115,8 +115,8 @@ def splitBoundary(lineSet, poly):
 def createConvexPath(pair, case):
     
     
-    #print pair
-    odPointsList = ((pair[0].x, pair[0].y), (pair[1].x, pair[1].y))
+    print pair[1]
+    odPointsList = ((pair[0][0].x, pair[0][0].y), (pair[0][1].x, pair[0][1].y))
     st_line = LineString(odPointsList)
     labeledObstaclePoly = []
     totalConvexPathList = {}
@@ -540,12 +540,432 @@ def createConvexPath(pair, case):
             return 1
         else:
             return 0
-    elif case == 'fd':
+    else case == 'fd':
         if total_length <= fd_delivery:
             return 1
         else:
             return 0 
     
+
+
+
+
+
+
+
+
+def createConvexPath_FD(pair):
+    #For F_D pair only 
+    #return demand_id if ESP distance to target demand is less than fd_delivery
+    print pair[1]
+    odPointsList = ((pair[0][0].x, pair[0][0].y), (pair[0][1].x, pair[0][1].y))
+    st_line = LineString(odPointsList)
+    labeledObstaclePoly = []
+    totalConvexPathList = {}
+    if st_line.length > fd_delivery * 5280:
+        return 0
+        
+    dealtArcList = {}
+    totalConvexPathList[odPointsList] = LineString(odPointsList)
+    LineString
+    terminate = 0
+    idx_loop1 = 0
+    time_loop1 = 0
+    time_contain2 = 0
+    time_crossingDict = 0
+    time_convexLoop = 0 
+    time_impedingArcs = 0
+    time_spatialFiltering = 0
+    time_loop1_crossingDict = 0
+    time_buildConvexHulls = 0
+    no_obs = False
+    while terminate == 0:
+        t1s = time.time()
+        idx_loop1 += 1
+        
+        t6s = time.time()
+        #w = shapefile.Writer(shapefile.POLYLINE)
+        #w.field('nem')
+        #for line in totalConvexPathList:
+            #w.line(parts=[[ list(x) for x in line ]])
+            #w.record('ff')
+        #w.save(path + "graph_" + str(idx_loop1) + version_name)
+
+        totalGrpah = createGraph(totalConvexPathList.keys())
+        spatial_filter_n = networkx.dijkstra_path(totalGrpah, odPointsList[0], odPointsList[1])            
+        spatial_filter = []
+        for i in xrange(len(spatial_filter_n)-1):
+            spatial_filter.append([spatial_filter_n[i], spatial_filter_n[i+1]])
+
+        #w = shapefile.Writer(shapefile.POLYLINE)
+        #w.field('nem')
+        #for line in spatial_filter:
+            #w.line(parts=[[ list(x) for x in line ]])
+            #w.record('ff')
+        #w.save(self.path + "spatial Filter_" + str(idx_loop1) + self.version_name)
+        
+        #sp_length = 0
+        #for j in spatial_filter:
+            #sp_length += LineString(j).length        
+        #sp_l_set.append(sp_length)
+        
+        crossingDict = defaultdict(list)
+        
+        for line in spatial_filter:
+            Line = LineString(line)
+            for obs in obstaclesPolygons:
+                if Line.crosses(obs):
+                    if obs not in labeledObstaclePoly:
+                        labeledObstaclePoly.append(obs)
+                
+                    crossingDict[tuple(line)].append(obs)
+        
+        t6e = time.time()
+        time_spatialFiltering += t6e - t6s 
+        
+        if len(crossingDict.keys()) == 0:
+            terminate = 1
+            no_obs = True
+            continue
+        else:
+            t7s = time.time()
+            for tLine in crossingDict.keys():
+                #cLine = list(tLine)
+                if dealtArcList.has_key(tLine):
+                    try:
+                        del totalConvexPathList[tLine]
+                    except:
+                        del totalConvexPathList[(tLine[1], tLine[0])]
+                    continue
+                else:
+                    dealtArcList[tLine] = LineString(list(tLine))
+                    try:
+                        del totalConvexPathList[tLine]
+                    except:
+                        del totalConvexPathList[(tLine[1], tLine[0])]
+                    containingObs = []
+                    for obs in crossingDict[tLine]:
+                        
+                        convexHull = createConvexhull(obs, tLine)
+                        splitBoundary(totalConvexPathList, convexHull)
+                        convexHull = createConvexhull(obs, odPointsList)
+                        splitBoundary(totalConvexPathList, convexHull)
+                        convexHull2 = createConvexhull(obs)
+                        if convexHull2.contains(Point(tLine[0])):
+                            containingObs.append(obs)
+                        elif convexHull2.contains(Point(tLine[1])):
+                            containingObs.append(obs)
+                    if len(containingObs) != 0:   #SPLIT
+                        subConvexPathList = {}
+                        vi_obs = MultiPolygon([x for x in containingObs])
+                        containedLineCoords = list(tLine)
+                        fromX = containedLineCoords[0][0]
+                        fromY = containedLineCoords[0][1]
+                        toX = containedLineCoords[1][0]
+                        toY = containedLineCoords[1][1]
+                        fxA = (fromY - toY) / (fromX - toX)
+                        fxB = fromY - (fxA * fromX)
+                        minX = vi_obs.bounds[0]
+                        maxX = vi_obs.bounds[2]
+                        split_line = LineString([(min(minX, fromX, toX), fxA * min(minX, fromX, toX) + fxB), (max(maxX, fromX, toX), fxA * max(maxX, fromX, toX) + fxB)])
+                        
+                        for obs in containingObs:
+                            s1, s2 = splitPolygon(split_line, obs)
+                            dividedObsPoly = []
+                            #to deal with multipolygon
+                            a = s1.intersection(obs)
+                            b = s2.intersection(obs)
+                            if a.type == "Polygon":
+                                dividedObsPoly.append(a)
+                            else:
+                                for o in a.geoms:
+                                    if o.type == "Polygon":
+                                        dividedObsPoly.append(o)
+                            if b.type == "Polygon":
+                                dividedObsPoly.append(b)
+                            else:
+                                for o2 in b.geoms:
+                                    if o2.type == "Polygon":
+                                        dividedObsPoly.append(o2)
+                            
+                            for obs2 in dividedObsPoly:
+                                for pt in tLine:
+                                    convexHull = createConvexhull(obs2, [pt])
+                                    splitBoundary(subConvexPathList, convexHull)
+                        subVertices = []
+                        for line in subConvexPathList:
+                            subVertices.extend(line)
+                        subVertices = list(set(subVertices))
+                        containingObsVertices = []
+                        for obs in containingObs:
+                            containingObsVertices.extend(list(obs.exterior.coords))
+                        subVertices = [x for x in subVertices if x in containingObsVertices]
+                        deleteList = []
+                        for line in subConvexPathList:
+                            chk_cross = 0
+                            for obs in containingObs:
+                                if subConvexPathList[line].crosses(obs):
+                                    chk_cross = 1
+                            if chk_cross == 1:
+                                deleteList.append(line)
+                        for line in deleteList:
+                            del subConvexPathList[line]
+                            #subConvexPathList.remove(line)
+                        pairList = []
+                        for i in range(len(subVertices)):
+                            for j in range(i+1, len(subVertices)):
+                                pairList.append((subVertices[i], subVertices[j]))
+                        for i in pairList:
+                            Line = LineString(i)
+                            chk_cross = 0
+                            for obs in containingObs:
+                                if Line.crosses(obs):
+                                    chk_cross = 1
+                                elif Line.within(obs):
+                                    chk_cross = 1
+                            if chk_cross == 0:
+                                subConvexPathList[i] = Line
+                                #subConvexPathList.append(i)
+                        buffer_st_line = split_line.buffer(0.1)
+                        deleteList = []
+                        for line in subConvexPathList:
+                            if buffer_st_line.contains(subConvexPathList[line]):
+                                deleteList.append(line)
+                        for line in deleteList:
+                            if subConvexPathList.has_key(line):
+                                del subConvexPathList[line]
+                        #subConvexPathList = [x for x in subConvexPathList if x not in deleteList]
+                        for line in subConvexPathList:
+                            if not totalConvexPathList.has_key(line):
+                                if not totalConvexPathList.has_key((line[1],line[0])):
+                                    totalConvexPathList[line] = subConvexPathList[line]                                #if line not in totalConvexPathList:
+                                #if [line[1], line[0]] not in totalConvexPathList:
+                                    #totalConvexPathList.append(line)
+
+            t7e = time.time()
+            time_loop1_crossingDict += t7e - t7s
+            #new lines            
+            labeled_multyPoly = MultiPolygon([x for x in labeledObstaclePoly])
+            convexHull = createConvexhull(labeled_multyPoly, odPointsList)
+            splitBoundary(totalConvexPathList, convexHull)
+            #new lines end             
+                              
+            #impededPathList 
+            t5s = time.time()
+            impededPathList = {}
+            for line in totalConvexPathList:
+                for obs in labeledObstaclePoly:
+                    if totalConvexPathList[line].crosses(obs):
+                        impededPathList[line] = totalConvexPathList[line]
+                        break
+            t5e = time.time()
+            time_impedingArcs += t5e - t5s
+            for line in impededPathList:
+                del totalConvexPathList[line]
+           
+            terminate2 = 0
+            idx_loop2 = 0
+            t1e = time.time()
+            time_loop1 += t1e - t1s                   
+            while terminate2 == 0:
+                idx_loop2 += 1
+
+                deleteList = []
+                crossingDict = defaultdict(list)
+
+                for line in dealtArcList:
+                    if impededPathList.has_key(line):
+                        del impededPathList[line]
+                    elif impededPathList.has_key((line[1], line[0])):
+                        del impededPathList[(line[1],line[0])]
+                
+                t3s = time.time()
+                #pr.enable()
+                for line in impededPathList:
+                    for obs in labeledObstaclePoly:
+                        if impededPathList[line].crosses(obs):
+                            crossingDict[line].append(obs)
+                
+                t3e = time.time()
+                time_crossingDict += t3e - t3s
+                #at this point, impededArcList should be emptied, as it only contains crossing arcs, and all of them 
+                #should be replaced by convex hulls. 
+                for line in crossingDict:
+                    del impededPathList[line]
+                for line in impededPathList:
+                    if not totalConvexPathList.has_key(line):
+                        totalConvexPathList[line] = impededPathList[line]
+                impededPathList = {}
+
+                if len(crossingDict.keys()) == 0:
+                    terminate2 = 1
+                    continue
+                else:
+                    
+                    t4s = time.time()
+                    
+                    for tLine in crossingDict.keys():
+                        dealtArcList[tLine] = crossingDict[tLine]                
+                        containingObs = []
+                        for obs in crossingDict[tLine]:
+                            chk_contain = 0
+                            convexHull2 = createConvexhull(obs)
+                            if convexHull2.contains(Point(tLine[0])):
+                                containingObs.append(obs)
+                                chk_contain = 1
+                            elif convexHull2.contains(Point(tLine[1])):
+                                containingObs.append(obs)
+                                chk_contain = 1
+                            if chk_contain == 0:
+                                t10s = time.time()
+                                convexHull = createConvexhull(obs, tLine)
+                                splitBoundary(impededPathList, convexHull)
+                                t10e = time.time()
+                                time_buildConvexHulls += t10e - t10s
+
+                        if len(containingObs) != 0:  #SPLIT
+                            #print "SPLIT"
+                            t2s = time.time()
+                            subConvexPathList = {}
+                            vi_obs = MultiPolygon([x for x in containingObs])
+                            containedLineCoords = tLine
+                            fromX = containedLineCoords[0][0]
+                            fromY = containedLineCoords[0][1]
+                            toX = containedLineCoords[1][0]
+                            toY = containedLineCoords[1][1]
+                            fxA = (fromY - toY) / (fromX - toX)
+                            fxB = fromY - (fxA * fromX)
+                            minX = vi_obs.bounds[0]
+                            maxX = vi_obs.bounds[2]
+                            split_line = LineString([(min(minX, fromX, toX), fxA * min(minX, fromX, toX) + fxB), (max(maxX, fromX, toX), fxA * max(maxX, fromX, toX) + fxB)])
+                            
+                            for obs in containingObs:
+                                s1, s2 = splitPolygon(split_line, obs)
+                                dividedObsPoly = []
+                                #to deal with multipolygon
+                                a = s1.intersection(obs)
+                                b = s2.intersection(obs)
+                                if a.type == "Polygon":
+                                    dividedObsPoly.append(a)
+                                else:
+                                    for o in a.geoms:
+                                        if o.type == "Polygon":
+                                            dividedObsPoly.append(o)
+                                if b.type == "Polygon":
+                                    dividedObsPoly.append(b)
+                                else:
+                                    for o2 in b.geoms:
+                                        if o2.type == "Polygon":
+                                            dividedObsPoly.append(o2)
+                                
+                                for obs2 in dividedObsPoly:
+                                    for pt in tLine:
+                                        convexHull = createConvexhull(obs2, [pt])
+                                        splitBoundary(subConvexPathList, convexHull)
+                            subVertices = []
+                            for line in subConvexPathList:
+                                subVertices.extend(line)
+                            subVertices = list(set(subVertices))
+                            containingObsVertices = []
+                            for obs in containingObs:
+                                containingObsVertices.extend(list(obs.exterior.coords))
+                            subVertices = [x for x in subVertices if x in containingObsVertices]
+                            deleteList = []
+                            for line in subConvexPathList:
+                                chk_cross = 0
+                                for obs in containingObs:
+                                    if subConvexPathList[line].crosses(obs):
+                                        chk_cross = 1
+                                if chk_cross == 1:
+                                    deleteList.append(line)
+                            for line in deleteList:
+                                del subConvexPathList[line]
+                                
+                            pairList = []
+                            for i in range(len(subVertices)):
+                                for j in range(i+1, len(subVertices)):
+                                    pairList.append((subVertices[i], subVertices[j]))
+                            
+                            for i in pairList:
+                                Line = LineString(list(i))
+                                chk_cross = 0
+                                for obs in containingObs:
+                                    if Line.crosses(obs):
+                                        chk_cross = 1
+                                    elif Line.within(obs):
+                                        chk_cross = 1
+                                if chk_cross == 0:
+                                    subConvexPathList[i] = Line
+                                  
+                            buffer_st_line = split_line.buffer(0.1)
+                            deleteList = []
+                            for line in subConvexPathList:
+                                if buffer_st_line.contains(subConvexPathList[line]):
+                                    deleteList.append(line)
+                            for line in deleteList:
+                                del subConvexPathList[line]
+                            for line in subConvexPathList:
+                                if not impededPathList.has_key(line):
+                                    if not impededPathList.has_key((line[1], line[0])):
+                                        impededPathList[line] = subConvexPathList[line]
+                                
+                            t2e = time.time()
+                            time_contain2 += t2e - t2s
+                    #pr.disable()
+                    for line in dealtArcList:
+                        if impededPathList.has_key(line):
+                            del impededPathList[line]
+                    #impededPathList = [x for x in impededPathList if x not in dealtArcList]
+                    t4e = time.time()
+                    time_convexLoop += t4e - t4s
+                    #end of else
+                #end of while2
+            for line in impededPathList:
+                if not totalConvexPathList.has_key(line):
+                    totalConvexPathList[line] = impededPathList[line]
+            
+            #totalConvexPathList.extend(impededPathList)
+    #no obstruction 
+    if no_obs == True:
+        return 1
+    
+    totalGraph = createGraph(totalConvexPathList.keys())
+    esp_n = networkx.dijkstra_path(totalGraph, odPointsList[0], odPointsList[1])
+    esp = []
+    for i in range(len(esp_n)-1):
+        esp.append([esp_n[i], esp_n[i+1]])
+    
+    #w = shapefile.Writer(shapefile.POLYLINE)
+    #w.field('nem')
+    #no_edges = 0
+    #for line in totalConvexPathList.keys():
+        #no_edges += 1
+        #w.line(parts=[[ list(x) for x in line ]])
+        #w.record('ff')
+    #w.save(path + "totalpath" + version_name + "%d" % pair[1] )              
+    w = shapefile.Writer(shapefile.POLYLINE)
+    w.field('nem')
+    for line in esp:
+        w.line(parts=[[ list(x) for x in line ]])
+        w.record('ff')
+    w.save(path + "ESP_" + version_name + "%d" % pair[1])
+    
+    targetPysal = pysal.IOHandlers.pyShpIO.shp_file(path + "ESP_" + version_name + "%d" % pair[1])
+    targetShp = generateGeometry(targetPysal)
+    total_length = 0
+    for line in targetShp:
+        total_length += line.length
+    if total_length <= fd_delivery:
+        return 1
+    else:
+        return 0
+    
+    
+
+
+
+
+
 
 
 
@@ -559,47 +979,35 @@ demandPoints = generateGeometry(des_shp)
 obstaclesPolygons = generateGeometry(obs_shp)
 
 version_name = "_Convexpath_Sequential_"
-FID_i = 0
-
-F_D_Pairs = {}
+pair_number = 0
+F_D_Pairs = []
 for i in facilPoints:
-    FID_j = 0
     for j in demandPoints:
-        F_D_Pairs[(FID_i, FID_j)] = (i, j)
-        FID_j += 1
-    FID_i += 1
-F_F_pairs = {}
-FID_i = 0
-
+        F_D_Pairs.append([(i,j), pair_number])
+        pair_number += 1
+F_F_pairs = []
 for i in facilPoints:
-    FID_j = 0
     for j in facilPoints:
         if not i == j:
-            F_F_pairs[(FID_i, FID_j)] = (i, j)
-        FID_j += 1
-    FID_i += 1
-
-
+            F_F_pairs.append((i,j))
+            
 f = open(path + "FF_Dict" + version_name + facilities + "_" + demands +"_"+obstacles+".txt", "w")
 f2 = open(path + "FD_Dict" + version_name + facilities + "_" + demands +"_"+obstacles+".txt", "w")
 facil_dict = defaultdict(list)
 facil_demand_dict = defaultdict(list)
-for pair in F_F_pairs.keys():
-    result = createConvexPath(F_F_pairs[pair], "ff")
+for pair in F_F_pairs:
+    result = createConvexPath(pair, "ff")
     if result == 1:
         facil_dict[pair[0]].append(pair[1])
-cPickle.dump(facil_dict, f)
-f.close()
+
 print "facil dict completed"
 
-for pair in F_D_Pairs.keys():
-    result = createConvexPath(F_D_Pairs[pair], "fd")
+for pair in F_D_Pairs:
+    result = createConvexPath(pair, "fd")
     if result == 1:
-        facil_demand_dict[pair[0]].append(pair[1] )
+        facil_demand_dict[pair[0]].append([pair[1], demand_amounts_d[pair[1]]])
         
 print "demand dict completed"
             
-
+cPickle.dump(facil_dict, f)
 cPickle.dump(facil_demand_dict, f2)
-
-f2.close()
