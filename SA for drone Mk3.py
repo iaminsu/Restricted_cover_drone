@@ -68,16 +68,18 @@ def cal_obj_dist(in_solution, in_graph):
     #print covered
     for de in covered:
         obj += float(dDict[de])    
-    for i in range(len(sites_coords)):
-        for j in range(i, len(sites_coords)+1):
+    for i in range(len(sites_coords)-1):
+        for j in range(i+1, len(sites_coords)):
             route_n = networkx.dijkstra_path(in_graph, sites_coords[i], sites_coords[j])
             route = []
-            for e in range(len(route-1)):
+            for e in range(len(route_n)-1):
                 route.append([route_n[e], route_n[e+1]])
             
             for c in route:
                 line = LineString(c)
                 routes_dist += line.length
+    print obj
+    print routes_dist
     obj = obj + routes_dist
     return obj
         
@@ -236,24 +238,22 @@ def removal(in_solution, remove_no):
 def delivery_network(in_solution):
     arc_list = []
     connectivity = True
-    for i in range(len(in_solution)):
+    for i in range(len(in_solution)-1):
         sites = [x[0] for x in F_Fdict[in_solution[i]]]
-        for j in range(i, len(in_solution)+1):
+        for j in range(i+1, len(in_solution)):
             if in_solution[j] in sites:
                 arc_list.append("ESP_" + str(in_solution[i]) + "_" + str(in_solution[j]) + ".shp")
     resultingGraph = networkx.Graph()
     for arc in arc_list:
         arc_pysal = pysal.IOHandlers.pyShpIO.shp_file(path+arc)
         arc_shp = generateGeometry(arc_pysal)
-        coords = list(arc_shp.coords)
-        for i in range(len(coords)-1):
-            resultingGraph.add_edge(coords[i], coords[i+1], weight = LineString([coords[i], coords[i+1]]).length)
-    for i in range(len(warehouse_coords)):
-        for j in range(i, len(warehouse_coords)):
-            try:
-                route = networkx.dijkstra_path(resultingGraph, warehouse_coords[i], warehouse_coords[j])
-            except:
-                connectivity = False
+        for line in arc_shp:
+            print list(line.coords)[0], list(line.coords)[1], line.length
+            resultingGraph.add_edge(list(line.coords)[0], list(line.coords)[1], weight = line.length)
+    for i in range(len(warehouse_coords)-1):
+        for j in range(i+1, len(warehouse_coords)):
+            route = networkx.dijkstra_path(resultingGraph, warehouse_coords[i], warehouse_coords[j])
+            
     if connectivity == True:
         return resultingGraph
     else:
@@ -426,6 +426,22 @@ def random_fill(in_solution=[]):
             #f = raw_input()
     return in_solution
 
+def network_removal (in_solution):
+    #remove certain number of sites from solution. But if a site is part of critical link between warehouses, the site will not be removed. 
+    #sites are randomly selected (not based on nn distance)
+    remove_no = int(remove_percent * p)
+    sol_wo_wh = [x for x in in_solution if not x in warehouses_ID]
+    while remove_no > 0:
+        r_site = random.choice(sol_wo_wh)
+        temp = copy.copy(sol_wo_wh)
+        temp.extend(warehouses_ID)
+        temp.remove(r_site)
+        temp_graph = delivery_network(temp)
+        if temp_graph != None:
+            sol_wo_wh.remove(r_site)
+            remove_no -= 1
+    sol_wo_wh.extend(warehouses_ID)
+    return sol_wo_wh
 
 
 f_FF = open(path + ffDict)
@@ -475,11 +491,12 @@ for i in F_Fdict:
 
 print "initializing solution"
 solution_sites.extend(warehouses_ID)
-solution_sites = random_fill(solution_sites)    
-
-print "solution initialized"
+solution_sites = random_fill(solution_sites)   
 print solution_sites
-print cal_obj(solution_sites)
+
+solution_graph = delivery_network(solution_sites)
+print "solution initialized"
+print cal_obj_dist(solution_sites, solution_graph)
 
 
 while temperature > 0.5:
