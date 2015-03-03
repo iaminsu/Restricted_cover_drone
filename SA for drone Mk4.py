@@ -13,11 +13,9 @@
 #Mk2:
 # - add distance restriction 
 
-#Mk3:
-# debugging 
-# adding functions for network distance
-# but not completed. Transition to Mk4
-
+#mk4:
+# dual objective, but minimizing both of them
+# by turning demand obj into uncovered demand 
 
 import pysal,  shapefile, networkx, time, cPickle, random, math, copy
 from shapely.geometry import Point, Polygon, LineString, MultiPoint, MultiPolygon
@@ -113,8 +111,8 @@ def cal_obj_min(in_solution, in_graph):
             for c in route:
                 line = LineString(c)
                 routes_dist += line.length
-    print obj
-    print routes_dist
+    #print obj
+    #print routes_dist
     obj = obj + routes_dist * rc_obj
     return obj    
 
@@ -286,6 +284,7 @@ def delivery_network(in_solution):
         for line in arc_shp:
             
             resultingGraph.add_edge(list(line.coords)[0], list(line.coords)[1], weight = line.length)
+    
     for i in range(len(warehouse_coords)-1):
         for j in range(i+1, len(warehouse_coords)):
             try:
@@ -295,7 +294,16 @@ def delivery_network(in_solution):
                 break
         if connectivity == False:
             break
-            
+    for site in in_solution:
+        for whouse in warehouse_coords:
+            try:
+                route = networkx.dijkstra_path(resultingGraph, (facil_shp[site].x, facil_shp[site].y), whouse)
+            except:
+                connectivity = False
+                break
+        if connectivity == False:
+            break
+    
     if connectivity == True:
         w = shapefile.Writer(shapefile.POLYLINE)
         w.field('nem')
@@ -416,7 +424,39 @@ def spatial_interchage_mk2(in_solution):
             if flag == False:
                 break
     return in_solution
-            
+
+def spatial_interchage_min(in_solution):
+    flag = True
+    while flag == True:
+        c_graph = delivery_network(in_solution)
+        current_obj = [in_solution, cal_obj_min(in_solution, c_graph)]
+        removable_solution = [x for x in in_solution if x not in warehouses_ID]
+        for site in removable_solution:
+            temp_sol = copy.copy(removable_solution)
+            temp_sol.remove(site)
+            candis = restricted_cadidates(temp_sol)
+            for c in candis:
+                temp2_sol = copy.copy(temp_sol)
+                if c == site:
+                    continue
+                else:
+                    temp2_sol.append(c)
+                    temp2_sol.extend(warehouses_ID)
+                    temp2_graph = delivery_network(temp2_sol)
+                    if temp2_graph == None:
+                        continue
+                    else:
+                        temp2_obj = cal_obj_min(temp2_sol, temp2_graph)
+                        if temp2_obj < current_obj[1]:
+                            if chk_feasibility_all(temp2_sol, False):
+                                flag = False
+                                in_solution = []
+                                in_solution = copy.copy(temp2_sol)
+                            
+                                break
+            if flag == False:
+                break
+    return in_solution
             
 def greedy_fill(in_solution=[]):
     isolation = True
@@ -428,7 +468,7 @@ def greedy_fill(in_solution=[]):
         new_sol = copy.copy(in_solution)
         c_obj = cal_obj(new_sol)
         while len(new_sol) < p:
-            print new_sol
+            #print new_sol
             pool = restricted_cadidates(new_sol)
             
             temp = []
@@ -445,12 +485,51 @@ def greedy_fill(in_solution=[]):
             isolation = False
         etime = time.time()
         tt += etime - stime
-        if tt > 20: 
+        if tt > 40: 
+            print "greedy failed"
             print tt
             print new_sol       
             chk_feasibility_all(new_sol, True)
             f = raw_input()        
     return in_solution
+
+def greedy_fill_min(in_solution):
+    isolation = True
+    tt = 0 
+
+    while isolation == True:
+        stime= time.time()
+        new_sol = [] 
+        new_sol = copy.copy(in_solution)
+        new_graph = delivery_network(new_sol)
+        c_obj = cal_obj_min(new_sol, new_graph)
+        while len(new_sol) < p:
+            #print new_sol
+            pool = restricted_cadidates(new_sol)
+
+            temp = []
+            for i in pool:
+                temp_graph = delivery_network(new_sol + [i])
+                temp_obj = cal_obj_min(new_sol + [i], temp_graph)
+                temp.append((temp_obj, i))
+            temp.sort()
+            c_obj = temp[0][0]
+            new_sol = new_sol + [temp[0][1]]
+        if chk_feasibility_all(new_sol, False):
+            in_solution =[]
+            in_solution = copy.copy(new_sol)
+            isolation = False
+        etime = time.time()
+        tt += etime - stime
+        if tt > 100:
+            if isolation == True:
+                print "greedy failed"
+                print tt
+                print new_sol       
+                chk_feasibility_all(new_sol, True)
+                f = raw_input()        
+    return in_solution    
+
 
 def random_fill(in_solution=[]):
     isolation = True
@@ -492,7 +571,28 @@ def network_removal (in_solution):
         if temp_graph != None:
             sol_wo_wh.remove(r_site)
             remove_no -= 1
+
     sol_wo_wh.extend(warehouses_ID)
+    temp_graph = delivery_network(sol_wo_wh)
+    additional_removal = []
+    
+    for site in sol_wo_wh:
+        if site not in warehouses_ID:
+             
+            site_coords = (facil_shp[site].x, facil_shp[site].y)
+            
+            for whouse in warehouse_coords:
+                try:
+                    route = networkx.dijkstra_path(temp_graph, site_coords, whouse)
+                    
+                except:
+                    
+                    additional_removal.append(site)
+                    break
+    sol_wo_wh = [x for x in sol_wo_wh if not x in additional_removal]
+                    
+                
+        
     return sol_wo_wh
 
 
@@ -516,7 +616,7 @@ for warehouse in warehouses_ID:
 solution_sites = []
 covered_demand = []
 objective_value = 0
-p = 22  # 
+p = 20  # 
 temperature = 50   #end temperature
 max_iter = 5   #iteration limit
 terminate_temp = 1         
@@ -538,7 +638,8 @@ for i in F_Fdict:
             F_F_close_d[i].append(j[0])
 
 for i in dDict:
-    total_demand += dDict[i]
+    total_demand += float(dDict[i])
+
 
 #initializing seed solution (random) 
 
@@ -547,40 +648,41 @@ print "initializing solution"
 
 solution_sites.extend(warehouses_ID)
 solution_sites = random_fill(solution_sites)   
-print solution_sites
+#print solution_sites
 
 solution_graph = delivery_network(solution_sites)
 print "solution initialized"
-print cal_obj_dist(solution_sites, solution_graph)
+
 
 
 while temperature > 0.5:
     
     current_solution = copy.copy(solution_sites)
     current_graph = delivery_network(current_solution)
-    current_obj = cal_obj_dist(current_solution, current_graph)
-    #print "current Objective value: ", current_obj
-    print "current solution: ", current_solution
+    current_obj = cal_obj_min(current_solution, current_graph)
+    print "current Objective value: ", current_obj
+    #print "current solution: ", current_solution
     new_solution = copy.copy(current_solution)
     
     new_solution = network_removal(new_solution)
     
     print "removed: ", new_solution
-    print "fill start"
-    new_solution = greedy_fill(new_solution)
-    print new_solution
+    #print "fill start"
+    new_solution = greedy_fill_min(new_solution)
+    #print new_solution
     print "spatial interchange"
-    new_solution = spatial_interchage_mk2(new_solution)
-    new_obj = cal_obj(new_solution)
+    new_solution = spatial_interchage_min(new_solution)
+    new_graph = delivery_network(new_solution)
+    new_obj = cal_obj_min(new_solution, new_graph)
     print new_obj
     #print new_obj - current_obj
     
-    if new_obj > current_obj:
+    if new_obj < current_obj:
         solution_sites = new_solution
         sa_count = 0 
         print "new solution accepted"
         #print "new objective value: ", new_obj
-        print "new solution: ", solution_sites
+        #print "new solution: ", solution_sites
     else:
         if sa_count > max_iter:
             sa_count = 0
@@ -591,19 +693,20 @@ while temperature > 0.5:
         else:
             sa_count += 1
             #print (new_obj - current_obj)*rc/temperature
-            print math.exp((new_obj - current_obj)*rc/temperature)
-            if random.random() < math.exp((new_obj - current_obj)*rc/temperature):
+            print math.exp((current_obj - new_obj)*rc/temperature)
+            if random.random() < math.exp((current_obj - new_obj)*rc/temperature):
                 solution_sites = new_solution
                 #print "bad solution accepted"
-                #print "new but bad objective: ", new_obj
+                print "new but bad objective: ", new_obj
                 #print "new but bad solution: ", new_solution
             else:
                 pass
                 #print "bad solution reputed"
             
-                
-print cal_obj(solution_sites)
-print solution_sites        
+print "solution"                
+print cal_obj_min(solution_sites)
+print solution_sites
+
             
     
     
