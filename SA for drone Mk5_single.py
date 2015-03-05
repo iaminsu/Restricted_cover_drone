@@ -30,6 +30,13 @@
 #Issues: solution is fixed after some point. Need to change either or both of greedy_fill and 
 #        spatial_interchange_mk3
 
+
+
+#mk5_single:
+# Add evaluation & removal functions for relaxed connectivity assumption. 
+#  
+
+
 import pysal,  shapefile, networkx, time, cPickle, random, math, copy
 from shapely.geometry import Point, Polygon, LineString, MultiPoint, MultiPolygon
 from collections import defaultdict
@@ -72,33 +79,7 @@ def cal_obj(in_solution):
 
 
 
-def chk_isolation(in_sol, wh_ids):   
-    #return false if sites are linked to any of warehouses 
-    #assume that the system allows separate delivery network from each warehouse
-    
-    result = []
-    for i in in_sol:
-        if len(result) == 0:
-            result.append(facil_shp[i].buffer(fd_fullPayload))
-        else:
-            result[0] = result[0].union(facil_shp[i].buffer(fd_fullPayload))    
-    if result[0].type == "MultiPolygon":
-        indi = True
-        for poly in result[0]:
-            indi_poly = False
-            for warehouse in wh_ids:
-                if poly.intersects(facil_shp[warehouse]):
-                    indi_poly = True
-            if indi_poly == False:
-                indi = False
-                break
-        if indi == True:
-            return False
-        else:
-            return True
-                    
-    else:
-        return False
+
 
 def chk_feasibility(in_solution, save):
     feasibility = True
@@ -194,20 +175,8 @@ def nn_distance(in_solution):
     distance_list.sort()
     return distance_list
 
-def createGraph(lineSet):
-        resultingGraph = networkx.Graph()
-        for line in lineSet:
-            resultingGraph.add_edge(line[0], line[1], weight = LineString(list(line)).length)
-        return resultingGraph
+
     
-def removal(in_solution, remove_no):
-    nn_dist = nn_distance(in_solution)
-    
-    #print nn_dist
-    for i in range(remove_no):
-        if nn_dist[i][2] in in_solution:
-            in_solution.remove(nn_dist[i][2])
-    return in_solution
                           
 def delivery_network(in_solution, s_file, in_name = "temp_graph"):
     arc_list = []
@@ -314,7 +283,46 @@ def delivery_network_mk3(in_solution, s_file, in_name = "temp_graph"):
         return resultingGraph
     else:
         return None
+
+
+def delivery_network_mk3_single(in_solution, s_file, in_name = "temp_graph"):
+     
+    arc_list = []
+    arc_shp_list = []
+    connectivity = True
+    resultingGraph = networkx.Graph()
+    for i in range(len(in_solution)-1):
+        sites = [x[0] for x in F_Fdict[in_solution[i]]]
+        for j in range(i+1, len(in_solution)):
+            if in_solution[j] in sites:
+                resultingGraph.add_edge((facil_shp[in_solution[i]].x, facil_shp[in_solution[i]].y), (facil_shp[in_solution[j]].x, facil_shp[in_solution[j]].y), weight = F_Fdict2[in_solution[i]][in_solution[j]])
+                arc_list.append("ESP_" + str(in_solution[i]) + "_" + str(in_solution[j]) + ".shp")
+    for site in in_solution:
+        site_connectivity = False
+        for whouse in warehouse_coords:
+            try:
+                route = networkx.dijkstra_path(resultingGraph, (facil_shp[site].x, facil_shp[site].y), whouse)
+                site_connectivity = True
+            except:
+                pass
+        if site_connectivity == False:
+            connectivity = False
+            break
     
+    if connectivity == True:
+        if s_file == True:
+            w = shapefile.Writer(shapefile.POLYLINE)
+            w.field('nem')
+            for line in arc_shp_list:
+
+                w.line(parts=[[ list(x) for x in list(line.coords)]])
+                w.record('chu')
+            w.save(path + in_name)
+        return resultingGraph
+    else:
+        return None
+
+
 def generate_graph(in_solution):
     arc_list = []
     arc_shp_list = []
@@ -532,7 +540,52 @@ def spatial_interchage_mk4(in_solution):
         if indi == True:
             break
     return in_solution
-            
+
+
+def spatial_interchage_mk4_single(in_solution):
+    #modified interchange algorithm
+    #conventional interchange algorithm cannot be applied since candidate set needs to be updated after any change in
+    #current solution. This interchange algorithm *change only 1* site!!
+    #1) if a site is critical site: find better site that can maintaining connection 
+    #2) if a site is not critical site: find better site from restricted candidate set for all other sites in current solution 
+
+    current_obj = [in_solution, cal_obj(in_solution)]
+    in_graph = delivery_network_mk2(in_solution, False)
+    temp_sol = copy.copy(in_solution)        
+    for site in temp_sol:
+        indi = False
+        if site not in warehouses_ID:
+            temp_sol2 = copy.copy(in_solution)
+            temp_sol2.remove(site)
+            if delivery_network_mk3_single(temp_sol2, False) == None: 
+                adj_nodes = in_graph[(facil_shp[site].x, facil_shp[site].y)].keys()
+                candis = restricted_cadidates([adj_nodes[0]])
+
+                for i in adj_nodes:
+                    candis = [x for x in candis if x in restricted_cadidates[[i]]]
+                for c in candis:
+                    temp2_obj = cal_obj(temp_sol2 + [c])
+                    if temp2_obj > current_obj[1]:
+                        in_solution = temp_sol2 + [c]
+                        current_obj = [in_solution, cal_obj(in_solution)]
+                        indi = True
+            else:  #non-critical node
+                candis = restricted_cadidates(temp_sol2)
+                for c in candis:
+                    temp2_obj = cal_obj(temp_sol2 + [c])
+                    if temp2_obj > current_obj[1]:
+                        if delivery_network_mk3_single(temp_sol2, False) != None:
+                            in_solution = temp_sol2 + [c]
+                            current_obj = [in_solution, cal_obj(in_solution)]                        
+                            indi = True
+
+
+        if indi == True:
+            break
+    return in_solution
+
+
+  
 def greedy_fill(in_solution=[]):
     isolation = True
     tt = 0 
@@ -564,9 +617,27 @@ def greedy_fill(in_solution=[]):
             print "greedy failed"
             print tt
             print new_sol       
-            chk_feasibility_all(new_sol, True)
+            g = delivery_network_mk2(new_sol, True, "greedy_failed")
             f = raw_input()        
     return in_solution
+
+
+def greedy_fill_single(in_solution=[]):
+
+    new_solution = copy.copy(in_solution)
+    c_obj = cal_obj(new_solution)
+    while len(new_solution) < p:
+        candis = restricted_cadidates(new_solution)
+        temp = []
+        for c in candis:
+            temp_obj = cal_obj(new_solution + [c])
+            temp.append((temp_obj, c))
+        temp.sort()
+        temp.reverse()
+        new_solution = new_solution + [temp[0][1]]
+
+    
+    return new_solution
 
 
 def random_fill(in_solution=[]):
@@ -592,6 +663,15 @@ def random_fill(in_solution=[]):
             #chk_feasibility_all(new_sol, True)
             #f = raw_input()
     return in_solution
+
+def random_fill_single(in_solution=[]):
+    
+    new_sol = copy.copy(in_solution)
+    while len(new_sol) < p:
+        random_pool = restricted_cadidates(new_sol)
+        new_sol.append(random.choice(random_pool))
+        
+    return new_sol
 
 def network_removal (in_solution):
     #remove certain number of sites from solution. But if a site is part of critical link between warehouses, 
@@ -695,7 +775,35 @@ def network_removal_mk2 (in_solution):
         
     return in_solution
 
-
+def network_removal_mk2_single (in_solution):
+    #remove certain number of sites from solution. But if a site is part of critical link between warehouses, 
+    #the site will not be removed. 
+    #sites are randomly selected (not based on nn distance)
+    #if some sites are separated from the delivery network, remove them also regardless of removal number. 
+    remove_no = int(remove_percent * len(in_solution))
+    removable_sites = [x for x in in_solution if not x in warehouses_ID]
+    for i in range(remove_no):
+        r_site = random.choice(removable_sites)
+        removable_sites.remove(r_site)
+        in_solution.remove(r_site)
+    temp_graph = delivery_network_mk2(in_solution, False)
+    additional_removal = []
+    for site in in_solution:
+        if site not in warehouses_ID:
+            site_coords = (facil_shp[site].x, facil_shp[site].y)
+            site_connectivity = False
+            for warehouse in warehouse_coords:
+                try:
+                    route = networkx.dijkstra_path(temp_graph, site_coords, warehouse)
+                    site_connectivity = True
+                except:
+                    pass
+            if site_connectivity == False:
+                additional_removal.append(site)
+    in_solution = [x for x in in_solution if not x in additional_removal]
+        
+    
+    return in_solution
 
 f_FF = open(path + ffDict)
 f_FD = open(path + fdDict)
@@ -719,7 +827,7 @@ for warehouse in warehouses_ID:
 solution_sites = []
 covered_demand = []
 objective_value = 0
-p = 12  # 
+p = 20  # 
 temperature = 30   #end temperature
 max_iter = 3   #iteration limit
 terminate_temp = 1         
@@ -750,10 +858,9 @@ for i in dDict:
 print "initializing solution"
 
 solution_sites.extend(warehouses_ID)
-solution_sites = random_fill(solution_sites)   
+solution_sites = random_fill_single(solution_sites)   
 #print solution_sites
 
-solution_graph = delivery_network_mk2(solution_sites, True)
 print "solution initialized"
 
 
@@ -767,19 +874,19 @@ while temperature > 0.5:
     
     new_solution = copy.copy(current_solution)
     s_time = time.time()
-    new_solution = network_removal_mk2 (new_solution)
+    new_solution = network_removal_mk2_single(new_solution)
     e_time = time.time()
     print "removed", new_solution
     print "removal time 2: ", e_time - s_time
     print "fill start"
     s_time = time.time()
-    new_solution = greedy_fill(new_solution)
+    new_solution = greedy_fill_single(new_solution)
     e_time = time.time()
     print "fill time: ", e_time - s_time
     #print new_solution
     print "spatial interchange start"
     s_time = time.time()
-    new_solution = spatial_interchage_mk4(new_solution)
+    new_solution = spatial_interchage_mk4_single(new_solution)
     e_time = time.time()
     print "interchange time: ", e_time - s_time
     new_graph = delivery_network_mk2(new_solution, True, "new_solution")
