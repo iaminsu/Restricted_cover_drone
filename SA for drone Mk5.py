@@ -16,11 +16,17 @@
 #mk4:
 # dual objective, but minimizing both of them
 # by turning demand obj into uncovered demand 
-# Issues 
-# 1. Too slow: graph generation and evaluation take too long time 
-# 2. Error: after several iteration, graph has error that makes impossible find a route. 
 
 
+#mk5:
+# new approach: no dual objective, only considering covered demand for obejctive value 
+# minimizing graph generation & evaluation 
+# eliminate redundancy 
+# new interchagne algorithm 
+# Control detour: 
+#  - 
+
+# Bug fix: network removal 
 
 import pysal,  shapefile, networkx, time, cPickle, random, math, copy
 from shapely.geometry import Point, Polygon, LineString, MultiPoint, MultiPolygon
@@ -28,6 +34,7 @@ from collections import defaultdict
 
 path = "/Users/insuhong/Dropbox/research/Distance restricted covering model/Locating recharging station/data4/"
 ffDict = "FF_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
+ff2Dict = "FF2_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
 fdDict = "FD_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
 demand_Dict = "demands.txt"
 facilities_f = "sample_sites_2.shp"
@@ -60,81 +67,9 @@ def cal_obj(in_solution):
         obj += float(dDict[de])
     return obj
 
-def cal_obj_dist(in_solution, in_graph):
-    covered = []
-    sites_coords = []
-    obj = 0 
-    for site in in_solution:
-        sites_coords.append((facil_shp[site].x, facil_shp[site].y))
-        
-        for i in F_Ddict[site]:
-            covered.append(i[0])
-        
-    covered = list(set(covered))
-    routes_dist = 0
-    #print covered
-    for de in covered:
-        obj += float(dDict[de])    
-    for i in range(len(sites_coords)-1):
-        for j in range(i+1, len(sites_coords)):
-            route_n = networkx.dijkstra_path(in_graph, sites_coords[i], sites_coords[j])
-            route = []
-            for e in range(len(route_n)-1):
-                route.append([route_n[e], route_n[e+1]])
-            
-            for c in route:
-                line = LineString(c)
-                routes_dist += line.length
-    print obj
-    print routes_dist
-    obj = obj + routes_dist * rc_obj
-    return obj
-        
-def cal_obj_min(in_solution, in_graph):
-    covered = []
-    sites_coords = []
-    obj = 0 
-    for site in in_solution:
-        sites_coords.append((facil_shp[site].x, facil_shp[site].y))
-        
-        for i in F_Ddict[site]:
-            covered.append(i[0])
-        
-    covered = list(set(covered))
-    routes_dist = 0
-    #print covered
-    for de in covered:
-        obj += float(dDict[de])    
-    obj = total_demand - obj
-    for i in range(len(sites_coords)-1):
-        for j in range(i+1, len(sites_coords)):
-            route_n = networkx.dijkstra_path(in_graph, sites_coords[i], sites_coords[j])
-            route = []
-            for e in range(len(route_n)-1):
-                route.append([route_n[e], route_n[e+1]])
-            
-            for c in route:
-                line = LineString(c)
-                routes_dist += line.length
-    #print obj
-    #print routes_dist
-    obj = obj + routes_dist * rc_obj
-    return obj    
 
-def chk_isolation_old(in_sol):
-    #check isolation: return false iff all sites are linked (overlapped) 
-    #assume that the system is completed linked each other
-    result = []
-    for i in in_sol:
-        if len(result) == 0:
-            result.append(facil_shp[i].buffer(fd_fullPayload))
-        else:
-            result[0] = result[0].union(facil_shp[i].buffer(fd_fullPayload))
-    if result[0].type == "MultiPolygon":
-        print "Multi"
-        return True
-    else:
-        return False
+
+
 def chk_isolation(in_sol, wh_ids):   
     #return false if sites are linked to any of warehouses 
     #assume that the system allows separate delivery network from each warehouse
@@ -272,7 +207,7 @@ def removal(in_solution, remove_no):
             in_solution.remove(nn_dist[i][2])
     return in_solution
                           
-def delivery_network(in_solution):
+def delivery_network(in_solution, s_file, in_name = "temp_graph"):
     arc_list = []
     arc_shp_list = []
     connectivity = True
@@ -310,18 +245,112 @@ def delivery_network(in_solution):
             break
     
     if connectivity == True:
-        w = shapefile.Writer(shapefile.POLYLINE)
-        w.field('nem')
-        for line in arc_shp_list:
-            
-            w.line(parts=[[ list(x) for x in list(line.coords)]])
-            w.record('chu')
-        w.save(path + "delivery_network")
+        if s_file == True:
+            w = shapefile.Writer(shapefile.POLYLINE)
+            w.field('nem')
+            for line in arc_shp_list:
+                
+                w.line(parts=[[ list(x) for x in list(line.coords)]])
+                w.record('chu')
+            w.save(path + in_name)
         return resultingGraph
     else:
         return None
-            
     
+    
+def delivery_network_mk2(in_solution, s_file, in_name = "temp_graph"):
+    arc_list = []
+    arc_shp_list = []
+    connectivity = True
+    resultingGraph = networkx.Graph()
+    for i in range(len(in_solution)-1):
+        sites = [x[0] for x in F_Fdict[in_solution[i]]]
+        for j in range(i+1, len(in_solution)):
+            if in_solution[j] in sites:
+                resultingGraph.add_edge((facil_shp[in_solution[i]].x, facil_shp[in_solution[i]].y), (facil_shp[in_solution[j]].x, facil_shp[in_solution[j]].y), weight = F_Fdict2[in_solution[i]][in_solution[j]])
+                arc_list.append("ESP_" + str(in_solution[i]) + "_" + str(in_solution[j]) + ".shp")
+    
+    if s_file == True:
+        for arc in arc_list:
+            arc_pysal = pysal.IOHandlers.pyShpIO.shp_file(path+arc)
+            arc_shp = generateGeometry(arc_pysal)
+            arc_shp_list.extend(arc_shp)
+        w = shapefile.Writer(shapefile.POLYLINE)
+        w.field('nem')
+        for line in arc_shp_list:
+            w.line(parts=[[ list(x) for x in list(line.coords)]])
+            w.record('chu')
+        w.save(path + in_name)
+    return resultingGraph
+
+def delivery_network_mk3(in_solution, s_file, in_name = "temp_graph"):
+    #check connectivity between warehouses 
+    arc_list = []
+    arc_shp_list = []
+    connectivity = True
+    for i in range(len(in_solution)-1):
+        sites = [x[0] for x in F_Fdict[in_solution[i]]]
+        for j in range(i+1, len(in_solution)):
+            if in_solution[j] in sites:
+                arc_list.append("ESP_" + str(in_solution[i]) + "_" + str(in_solution[j]) + ".shp")
+    resultingGraph = networkx.Graph()
+    for arc in arc_list:
+        arc_pysal = pysal.IOHandlers.pyShpIO.shp_file(path+arc)
+        arc_shp = generateGeometry(arc_pysal)
+        arc_shp_list.extend(arc_shp)
+        for line in arc_shp:
+            
+            resultingGraph.add_edge(list(line.coords)[0], list(line.coords)[1], weight = line.length)
+    
+    for i in range(len(warehouse_coords)-1):
+        for j in range(i+1, len(warehouse_coords)):
+            try:
+                route = networkx.dijkstra_path(resultingGraph, warehouse_coords[i], warehouse_coords[j])
+            except:
+                connectivity = False
+                break
+        if connectivity == False:
+            break
+    
+    if connectivity == True:
+        if s_file == True:
+            w = shapefile.Writer(shapefile.POLYLINE)
+            w.field('nem')
+            for line in arc_shp_list:
+                
+                w.line(parts=[[ list(x) for x in list(line.coords)]])
+                w.record('chu')
+            w.save(path + in_name)
+        return resultingGraph
+    else:
+        return None
+    
+def generate_graph(in_solution):
+    arc_list = []
+    arc_shp_list = []
+    
+    for i in range(len(in_solution)-1):
+        sites = [x[0] for x in F_Fdict[in_solution[i]]]
+        for j in range(i+1, len(in_solution)):
+            if in_solution[j] in sites:
+                arc_list.append("ESP_" + str(in_solution[i]) + "_" + str(in_solution[j]) + ".shp")
+    resultingGraph = networkx.Graph()
+    for arc in arc_list:
+        arc_pysal = pysal.IOHandlers.pyShpIO.shp_file(path+arc)
+        arc_shp = generateGeometry(arc_pysal)
+        arc_shp_list.extend(arc_shp)
+        for line in arc_shp:
+            
+            resultingGraph.add_edge(list(line.coords)[0], list(line.coords)[1], weight = line.length)
+    w = shapefile.Writer(shapefile.POLYLINE)
+    w.field('nem')
+    for line in arc_shp_list:
+        
+        w.line(parts=[[ list(x) for x in list(line.coords)]])
+        w.record('chu')
+    w.save(path + "in_name")    
+    
+    return resultingGraph
 
 def restricted_cadidates(in_solution):   #for spatial_interchange: 
     candis = []
@@ -565,7 +594,7 @@ def network_removal (in_solution):
     #the site will not be removed. 
     #sites are randomly selected (not based on nn distance)
     #if some sites are separated from the delivery network, remove them also regardless of removal number. 
-    remove_no = int(remove_percent * p)
+    remove_no = int(remove_percent * len(in_solution))
     sol_wo_wh = [x for x in in_solution if not x in warehouses_ID]
     while remove_no > 0:
         r_site = random.choice(sol_wo_wh)
@@ -573,9 +602,12 @@ def network_removal (in_solution):
         temp.extend(warehouses_ID)
         temp.remove(r_site)
         temp_graph = delivery_network(temp)
+        #print temp
+        #print remove_no
         if temp_graph != None:
             sol_wo_wh.remove(r_site)
             remove_no -= 1
+            
 
     sol_wo_wh.extend(warehouses_ID)
     temp_graph = delivery_network(sol_wo_wh)
@@ -600,11 +632,69 @@ def network_removal (in_solution):
         
     return sol_wo_wh
 
+def network_removal_mk2 (in_solution):
+    #remove certain number of sites from solution. But if a site is part of critical link between warehouses, 
+    #the site will not be removed. 
+    #sites are randomly selected (not based on nn distance)
+    #if some sites are separated from the delivery network, remove them also regardless of removal number. 
+    remove_no = int(remove_percent * len(in_solution))
+    print remove_no
+    removable_sites = []
+    print "in_solution:", in_solution
+    for site in in_solution:
+        if site not in warehouses_ID:
+            temp = copy.copy(in_solution)
+            temp.remove(site)
+            temp_graph = delivery_network_mk3(temp, False)
+            
+            if temp_graph != None:
+                removable_sites.append(site)
+    if len(removable_sites) < remove_no:
+        remove_no = len(removable_sites)
+    print "removeable,", removable_sites
+    print remove_no
+    while remove_no > 0:
+        r_site = random.choice(removable_sites)
+        removable_sites.remove(r_site)
+        in_solution.remove(r_site)
+        remove_no -= 1
+    
+    print "removed", in_solution
+    temp_graph = delivery_network_mk2(in_solution, True)
+    additional_removal = []
+    
+    print temp_graph 
+    for site in in_solution:
+        if site not in warehouses_ID:
+            site_coords = (facil_shp[site].x, facil_shp[site].y)
+            for whouse in warehouse_coords:
+                
+                try:
+                    route = networkx.dijkstra_path(temp_graph, site_coords, whouse)
+                except networkx.exception.NetworkXNoPath:
+                    additional_removal.append(site)
+                    break
+                
+                except KeyError:
+                    additional_removal.append(site)
+    in_solution = [x for x in in_solution if not x in additional_removal]
+    if len(in_solution) < 5:
+        print "shit again?"
+        print "r", additional_removal
+        print in_solution
+        r = raw_input()
+                
+        
+    return in_solution
+
+
 
 f_FF = open(path + ffDict)
 f_FD = open(path + fdDict)
+
 f_demand = open(path + demand_Dict, 'rb')
 F_Fdict = cPickle.load(f_FF)
+F_Fdict2 = cPickle.load(open(path + ff2Dict))
 F_Ddict = cPickle.load(f_FD)
 
 facil_pysal = pysal.IOHandlers.pyShpIO.shp_file(path+facilities_f)
@@ -655,7 +745,7 @@ solution_sites.extend(warehouses_ID)
 solution_sites = random_fill(solution_sites)   
 #print solution_sites
 
-solution_graph = delivery_network(solution_sites)
+solution_graph = delivery_network_mk2(solution_sites, True)
 print "solution initialized"
 
 
@@ -663,26 +753,32 @@ print "solution initialized"
 while temperature > 0.5:
     
     current_solution = copy.copy(solution_sites)
-    current_graph = delivery_network(current_solution)
-    current_obj = cal_obj_min(current_solution, current_graph)
+    current_graph = delivery_network_mk2(current_solution, True, "currrent_graph")
+    current_obj = cal_obj(current_solution)
     print "current Objective value: ", current_obj
-    #print "current solution: ", current_solution
+    
     new_solution = copy.copy(current_solution)
-    
-    new_solution = network_removal(new_solution)
-    
-    print "removed: ", new_solution
-    #print "fill start"
-    new_solution = greedy_fill_min(new_solution)
+    s_time = time.time()
+    new_solution = network_removal_mk2 (new_solution)
+    e_time = time.time()
+    print "removed", new_solution
+    print "removal time 2: ", e_time - s_time
+    print "fill start"
+    s_time = time.time()
+    new_solution = greedy_fill(new_solution)
+    e_time = time.time()
+    print "fill time: ", e_time - s_time
     #print new_solution
-    print "spatial interchange"
-    new_solution = spatial_interchage_min(new_solution)
-    new_graph = delivery_network(new_solution)
-    new_obj = cal_obj_min(new_solution, new_graph)
+    print "spatial interchange start"
+    s_time = time.time()
+    new_solution = spatial_interchage_mk2(new_solution)
+    e_time = time.time()
+    print "interchange time: ", e_time - s_time
+    new_obj = cal_obj(new_solution)
     print new_obj
     #print new_obj - current_obj
     
-    if new_obj < current_obj:
+    if new_obj > current_obj:
         solution_sites = new_solution
         sa_count = 0 
         print "new solution accepted"
@@ -698,8 +794,8 @@ while temperature > 0.5:
         else:
             sa_count += 1
             #print (new_obj - current_obj)*rc/temperature
-            print math.exp((current_obj - new_obj)*rc/temperature)
-            if random.random() < math.exp((current_obj - new_obj)*rc/temperature):
+            print math.exp((new_obj - current_obj)*rc/temperature)
+            if random.random() < math.exp((new_obj - current_obj)*rc/temperature):
                 solution_sites = new_solution
                 #print "bad solution accepted"
                 print "new but bad objective: ", new_obj
