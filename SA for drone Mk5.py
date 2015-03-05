@@ -488,37 +488,47 @@ def spatial_interchage_mk3(in_solution):
     return in_solution
 
 
-def spatial_interchage_min(in_solution):
-    flag = True
-    while flag == True:
-        c_graph = delivery_network(in_solution)
-        current_obj = [in_solution, cal_obj_min(in_solution, c_graph)]
-        removable_solution = [x for x in in_solution if x not in warehouses_ID]
-        for site in removable_solution:
-            temp_sol = copy.copy(removable_solution)
-            temp_sol.remove(site)
-            candis = restricted_cadidates(temp_sol)
-            for c in candis:
-                temp2_sol = copy.copy(temp_sol)
-                if c == site:
-                    continue
-                else:
-                    temp2_sol.append(c)
-                    temp2_sol.extend(warehouses_ID)
-                    temp2_graph = delivery_network(temp2_sol)
-                    if temp2_graph == None:
-                        continue
-                    else:
-                        temp2_obj = cal_obj_min(temp2_sol, temp2_graph)
-                        if temp2_obj < current_obj[1]:
-                            if chk_feasibility_all(temp2_sol, False):
-                                flag = False
-                                in_solution = []
-                                in_solution = copy.copy(temp2_sol)
-                            
-                                break
-            if flag == False:
-                break
+def spatial_interchage_mk4(in_solution):
+    #modified interchange algorithm
+    #conventional interchange algorithm cannot be applied since candidate set needs to be updated after any change in
+    #current solution. This interchange algorithm *change only 1* site!!
+    #1) if a site is critical site: find better site that can maintaining connection 
+    #2) if a site is not critical site: find better site from restricted candidate set for all other sites in current solution 
+    
+    current_obj = [in_solution, cal_obj(in_solution)]
+    in_graph = delivery_network_mk2(in_solution, False)
+    temp_sol = copy.copy(in_solution)        
+    for site in temp_sol:
+        indi = False
+        if site not in warehouses_ID:
+            temp_sol2 = copy.copy(in_solution)
+            temp_sol2.remove(site)
+            if delivery_network_mk3(temp_sol2, False) == None:  #site is critical node
+                #then only candidates that can restablish connection are considered
+                adj_nodes = in_graph[(facil_shp[site].x, facil_shp[site].y)].keys()
+                candis = restricted_cadidates([adj_nodes[0]])
+                
+                for i in adj_nodes:
+                    candis = [x for x in candis if x in restricted_cadidates[[i]]]
+                for c in candis:
+                    temp2_obj = cal_obj(temp_sol2 + [c])
+                    if temp2_obj > current_obj[1]:
+                        in_solution = temp_sol2 + [c]
+                        current_obj = [in_solution, cal_obj(in_solution)]
+                        indi = True
+            else:  #non-critical node
+                candis = restricted_cadidates(temp_sol2)
+                for c in candis:
+                    temp2_obj = cal_obj(temp_sol2 + [c])
+                    if temp2_obj > current_obj[1]:
+                        if delivery_network(temp_sol2, False) != None:
+                            in_solution = temp_sol2 + [c]
+                            current_obj = [in_solution, cal_obj(in_solution)]                        
+                            indi = True
+            
+                    
+        if indi == True:
+            break
     return in_solution
             
 def greedy_fill(in_solution=[]):
@@ -707,7 +717,7 @@ for warehouse in warehouses_ID:
 solution_sites = []
 covered_demand = []
 objective_value = 0
-p = 20  # 
+p = 12  # 
 temperature = 30   #end temperature
 max_iter = 3   #iteration limit
 terminate_temp = 1         
@@ -767,7 +777,7 @@ while temperature > 0.5:
     #print new_solution
     print "spatial interchange start"
     s_time = time.time()
-    new_solution = spatial_interchage_mk3(new_solution)
+    new_solution = spatial_interchage_mk4(new_solution)
     e_time = time.time()
     print "interchange time: ", e_time - s_time
     new_graph = delivery_network_mk2(new_solution, True, "new_solution")
