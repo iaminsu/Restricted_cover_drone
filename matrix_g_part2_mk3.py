@@ -3,6 +3,8 @@
 #Including containing case & spatial filtering method 
 
 
+#Don't save straigh path 
+
 #B version: using dictionary. Much faster
 import pysal,  shapefile, networkx, time, cPickle
 from shapely.geometry import Point, Polygon, LineString, MultiPoint, MultiPolygon

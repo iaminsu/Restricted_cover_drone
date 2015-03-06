@@ -41,6 +41,8 @@ fdDict = "FD_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
 demand_Dict = "demands.txt"
 facilities_f = "sample_sites_2.shp"
 demands_f = "sample_demand_2_p.shp"
+ffcords = "FF_coords_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
+
 #loading matrices & initialize variables 
 
 def generateGeometry(in_shp):
@@ -509,9 +511,15 @@ def spatial_interchage_mk4(in_solution):
                 #then only candidates that can restablish connection are considered
                 adj_nodes = in_graph[(facil_shp[site].x, facil_shp[site].y)].keys()
                 candis = restricted_cadidates([adj_nodes[0]])
-                
+                print "critical site: ", site
                 for i in adj_nodes:
-                    candis = [x for x in candis if x in restricted_cadidates[[i]]]
+                    print restricted_cadidates([F_FCoords[i]])
+                    if len(candis) == 0:
+                        candis = restricted_cadidates([F_FCoords[i]])
+                    else:
+                        candis = [x for x in candis if x in restricted_cadidates([F_FCoords[i]])]
+                
+                print candis
                 for c in candis:
                     temp2_obj = cal_obj(temp_sol2 + [c])
                     if temp2_obj > current_obj[1]:
@@ -704,7 +712,7 @@ f_demand = open(path + demand_Dict, 'rb')
 F_Fdict = cPickle.load(f_FF)
 F_Fdict2 = cPickle.load(open(path + ff2Dict))
 F_Ddict = cPickle.load(f_FD)
-
+F_FCoords = cPickle.load(open(path+ ffcords))
 facil_pysal = pysal.IOHandlers.pyShpIO.shp_file(path+facilities_f)
 demand_pysal = pysal.IOHandlers.pyShpIO.shp_file(path + demands_f)
 
@@ -719,7 +727,7 @@ for warehouse in warehouses_ID:
 solution_sites = []
 covered_demand = []
 objective_value = 0
-p = 12  # 
+p = 15  # 
 temperature = 30   #end temperature
 max_iter = 3   #iteration limit
 terminate_temp = 1         
@@ -774,6 +782,7 @@ while temperature > 0.5:
     print "fill start"
     s_time = time.time()
     new_solution = greedy_fill(new_solution)
+    n_graph = delivery_network_mk2(new_solution, True, "greey_graph")
     e_time = time.time()
     print "fill time: ", e_time - s_time
     #print new_solution
