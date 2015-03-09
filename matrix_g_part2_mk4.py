@@ -25,7 +25,10 @@ class convexMatrix():
         pair_number = 0
         self.indi = indi
         ODPairs = []
-        results_d = defaultdict(dict)
+        if self.indi == "FF":
+            results_d = defaultdict(dict)
+        elif self.indi == "FD":
+            results_d = defaultdict(list)
         
         
         FID_i = 0
@@ -595,8 +598,8 @@ path_air = "/Users/insuhong/Dropbox/research/Distance restricted covering model/
 path_ubuntu = "/home/insu/Dropbox/research/Convexpath Approach/HPC/data/"
 
 start = time.time()
-a = convexMatrix(path_air, "facils_f_22000.shp", "facils_f_22000.shp", "obstacles_p.shp", "FF")
-print "ff is done"
+#a = convexMatrix(path_air, "facils_f_22000.shp", "facils_f_22000.shp", "obstacles_p.shp", "FF")
+#print "ff is done"
 b = convexMatrix(path_air, "facils_f_22000.shp", "demands_f_22000.shp", "obstacles_p.shp", "FD")
 stop = time.time()
 print stop - start

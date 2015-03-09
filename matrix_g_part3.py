@@ -16,8 +16,8 @@ def generateGeometry(in_shp):
             resultingGeometry.append(Polygon(in_shp.get_shape(i)['Vertices']))
     return resultingGeometry    
 
-facilities_f = "sample_sites_2.shp"
-path = "/Users/insuhong/Dropbox/research/Distance restricted covering model/Locating recharging station/data4/"
+facilities_f = "facils_f_22000.shp"
+path = "/Users/insuhong/Dropbox/research/Distance restricted covering model/Locating recharging station/data5/"
 
 facil_pysal = pysal.IOHandlers.pyShpIO.shp_file(path+facilities_f)
 facil_shp = generateGeometry(facil_pysal)
@@ -27,7 +27,7 @@ coords_dict = {}
 for i in range(len(facil_shp)):
     coords_dict[(facil_shp[i].x, facil_shp[i].y)] = i
 
-f = open(path + "FF_coords_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt","w")
+f = open(path + "FF_coords_Dictfacils_f_22000.shp_obstacles_p.shp.txt","w")
 cPickle.dump(coords_dict, f)
 f.close()
 

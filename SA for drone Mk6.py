@@ -30,20 +30,20 @@
 #Issues: solution is fixed after some point. Need to change either or both of greedy_fill and 
 #        spatial_interchange_mk3
 
+#Mk6
+# addressing fixation issue (it happens even in single version)
+
 import pysal,  shapefile, networkx, time, cPickle, random, math, copy
 from shapely.geometry import Point, Polygon, LineString, MultiPoint, MultiPolygon
 from collections import defaultdict
 
-
-path = "/Users/insuhong/Dropbox/research/Distance restricted covering model/Locating recharging station/data4/"
-ffDict = "FF_old_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
-#ff2Dict = "FF2_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
+path = "/Users/insuhong/Dropbox/research/Distance restricted covering model/Locating recharging station/data5/"
+ffDict = "FF_Dictfacils_f_22000.shp_facils_f_22000.shp_obstacles_p.shp.txt"
+ffcords = "FF_coords_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
 fdDict = "FD_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
 demand_Dict = "demands.txt"
 facilities_f = "sample_sites_2.shp"
 demands_f = "sample_demand_2_p.shp"
-ffcords = "FF_coords_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
-
 #loading matrices & initialize variables 
 
 def generateGeometry(in_shp):
@@ -214,11 +214,14 @@ def delivery_network(in_solution, s_file, in_name = "temp_graph"):
     connectivity = True
     resultingGraph = networkx.Graph()
     for i in range(len(in_solution)-1):
-        sites = [x[0] for x in F_Fdict[in_solution[i]]]
+        sites = F_Fdict[in_solution[i]].keys()
         for j in range(i+1, len(in_solution)):
             if in_solution[j] in sites:
                 resultingGraph.add_edge((facil_shp[in_solution[i]].x, facil_shp[in_solution[i]].y), (facil_shp[in_solution[j]].x, facil_shp[in_solution[j]].y), weight = F_Fdict2[in_solution[i]][in_solution[j]])
-                arc_list.append("ESP_" + str(in_solution[i]) + "_" + str(in_solution[j]) + ".shp")
+                if F_Ddict[in_solution[i]][in_solution[j]][1] == "straight":
+                    arc_list.append((in_solution[i], in_solution[j]))
+                else:
+                    arc_list.append("ESP_" + str(in_solution[i]) + "_" + str(in_solution[j]) + ".shp")
 
     for i in range(len(warehouse_coords)-1):
         for j in range(i+1, len(warehouse_coords)):
@@ -238,9 +241,17 @@ def delivery_network(in_solution, s_file, in_name = "temp_graph"):
                 break
         if connectivity == False:
             break
+
     
     if connectivity == True:
         if s_file == True:
+            for i in arc_list:
+                if type(i) == tuple:
+                    arc_shp_list.append(LineString([list(facil_shp[i[0]].coords)[0], list(facil_shp[i[1]].coords)[0]]))
+                else:
+                    arc_pysal = pysal.IOHandlers.pyShpIO.shp_file(path+i)
+                    arc_shp = generateGeometry(arc_pysal)
+                    arc_shp_list.extend(arc_shp)            
             w = shapefile.Writer(shapefile.POLYLINE)
             w.field('nem')
             for line in arc_shp_list:
@@ -259,17 +270,23 @@ def delivery_network_mk2(in_solution, s_file, in_name = "temp_graph"):
     connectivity = True
     resultingGraph = networkx.Graph()
     for i in range(len(in_solution)-1):
-        sites = [x[0] for x in F_Fdict[in_solution[i]]]
+        sites = F_Fdict[in_solution[i]].keys()
         for j in range(i+1, len(in_solution)):
             if in_solution[j] in sites:
                 resultingGraph.add_edge((facil_shp[in_solution[i]].x, facil_shp[in_solution[i]].y), (facil_shp[in_solution[j]].x, facil_shp[in_solution[j]].y), weight = F_Fdict2[in_solution[i]][in_solution[j]])
-                arc_list.append("ESP_" + str(in_solution[i]) + "_" + str(in_solution[j]) + ".shp")
+                if F_Ddict[in_solution[i]][in_solution[j]][1] == "straight":
+                    arc_list.append((in_solution[i], in_solution[j]))
+                else:
+                    arc_list.append("ESP_" + str(in_solution[i]) + "_" + str(in_solution[j]) + ".shp")
     
     if s_file == True:
-        for arc in arc_list:
-            arc_pysal = pysal.IOHandlers.pyShpIO.shp_file(path+arc)
-            arc_shp = generateGeometry(arc_pysal)
-            arc_shp_list.extend(arc_shp)
+        for i in arc_list:
+            if type(i) == tuple:
+                arc_shp_list.append(LineString([list(facil_shp[i[0]].coords)[0], list(facil_shp[i[1]].coords)[0]]))
+            else:
+                arc_pysal = pysal.IOHandlers.pyShpIO.shp_file(path+i)
+                arc_shp = generateGeometry(arc_pysal)
+                arc_shp_list.extend(arc_shp)          
         w = shapefile.Writer(shapefile.POLYLINE)
         w.field('nem')
         for line in arc_shp_list:
@@ -285,11 +302,14 @@ def delivery_network_mk3(in_solution, s_file, in_name = "temp_graph"):
     connectivity = True
     resultingGraph = networkx.Graph()
     for i in range(len(in_solution)-1):
-        sites = [x[0] for x in F_Fdict[in_solution[i]]]
+        sites = F_Fdict[in_solution[i]].keys()
         for j in range(i+1, len(in_solution)):
             if in_solution[j] in sites:
                 resultingGraph.add_edge((facil_shp[in_solution[i]].x, facil_shp[in_solution[i]].y), (facil_shp[in_solution[j]].x, facil_shp[in_solution[j]].y), weight = F_Fdict2[in_solution[i]][in_solution[j]])
-                arc_list.append("ESP_" + str(in_solution[i]) + "_" + str(in_solution[j]) + ".shp")
+                if F_Ddict[in_solution[i]][in_solution[j]][1] == "straight":
+                    arc_list.append((in_solution[i], in_solution[j]))
+                else:
+                    arc_list.append("ESP_" + str(in_solution[i]) + "_" + str(in_solution[j]) + ".shp")
     
     for i in range(len(warehouse_coords)-1):
         for j in range(i+1, len(warehouse_coords)):
@@ -303,10 +323,16 @@ def delivery_network_mk3(in_solution, s_file, in_name = "temp_graph"):
     
     if connectivity == True:
         if s_file == True:
+            for i in arc_list:
+                if type(i) == tuple:
+                    arc_shp_list.append(LineString([list(facil_shp[i[0]].coords)[0], list(facil_shp[i[1]].coords)[0]]))
+                else:
+                    arc_pysal = pysal.IOHandlers.pyShpIO.shp_file(path+i)
+                    arc_shp = generateGeometry(arc_pysal)
+                    arc_shp_list.extend(arc_shp)          
             w = shapefile.Writer(shapefile.POLYLINE)
             w.field('nem')
             for line in arc_shp_list:
-                
                 w.line(parts=[[ list(x) for x in list(line.coords)]])
                 w.record('chu')
             w.save(path + in_name)
@@ -314,111 +340,20 @@ def delivery_network_mk3(in_solution, s_file, in_name = "temp_graph"):
     else:
         return None
     
-def generate_graph(in_solution):
-    arc_list = []
-    arc_shp_list = []
-    
-    for i in range(len(in_solution)-1):
-        sites = [x[0] for x in F_Fdict[in_solution[i]]]
-        for j in range(i+1, len(in_solution)):
-            if in_solution[j] in sites:
-                arc_list.append("ESP_" + str(in_solution[i]) + "_" + str(in_solution[j]) + ".shp")
-    resultingGraph = networkx.Graph()
-    for arc in arc_list:
-        arc_pysal = pysal.IOHandlers.pyShpIO.shp_file(path+arc)
-        arc_shp = generateGeometry(arc_pysal)
-        arc_shp_list.extend(arc_shp)
-        for line in arc_shp:
-            
-            resultingGraph.add_edge(list(line.coords)[0], list(line.coords)[1], weight = line.length)
-    w = shapefile.Writer(shapefile.POLYLINE)
-    w.field('nem')
-    for line in arc_shp_list:
-        
-        w.line(parts=[[ list(x) for x in list(line.coords)]])
-        w.record('chu')
-    w.save(path + "in_name")    
-    
-    return resultingGraph
 
 def restricted_cadidates(in_solution):   #for spatial_interchange: 
     candis = []
     for site in in_solution:
-        for i in F_Fdict[site]:
-            if i[1] > min_dist:
-                candis.append(i[0])
-    too_close = []
-    for site in in_solution:
-        too_close.extend(F_F_close_d[site])
-    
-        
+        for i in F_Fdict[site].keys():
+            if F_Ddict[site][i][0] > min_dist:
+                candis.append(i)
     candis = list(set(candis))
     candis = [x for x in candis if x not in in_solution]
-    candis = [x for x in candis if x not in too_close]
     return candis
 
 
 
-def spatial_interchange(in_solution):
-    print "interchange start"
-    c = restricted_cadidates(in_solution)
-    print len(c)
-    flag = True
-    while flag == True:
-        flag = False
-        while len(c) != 0:
-            candi = random.choice(c)
-            c.remove(candi)
-            current_obj = [in_solution, cal_obj(in_solution)]
-            removable_solution = [x for x in in_solution if x not in warehouses_ID]
-            for site in removable_solution:
-                temp_sol = []
-                temp_sol.extend(removable_solution)
-                temp_sol.remove(site)
-                temp_sol.append(candi)
-                temp_sol.extend(warehouses_ID)
-                temp_obj = cal_obj(temp_sol)
-                if temp_obj > current_obj[1]:
-                    if chk_isolation(temp_sol, warehouses_ID) == False: #prevent island in solution 
-                        flag = True
-                        current_obj = [temp_sol, temp_obj]
-            if flag == True:
-                in_solution = current_obj[0]
-    print "interchange finished"
-    return in_solution
-        
-def spatial_interchange_fast(in_solution):
-    #print "interchange start"
-    c = restricted_cadidates(in_solution)
-    #print len(c)
-    flag = True
-    while flag == True:
-        flag = False
-        while len(c) != 0:
-            candi = random.choice(c)
-            c.remove(candi)
-            current_obj = [in_solution, cal_obj(in_solution)]
-            removable_solution = [x for x in in_solution if x not in warehouses_ID]
-            for site in removable_solution:
-                temp_sol = []
-                temp_sol.extend(removable_solution)
-                temp_sol.remove(site)
-                temp_sol.append(candi)
-                temp_sol.extend(warehouses_ID)
-                temp_obj = cal_obj(temp_sol)
-                if temp_obj > current_obj[1]:
-                    if chk_isolation(temp_sol, warehouses_ID) == False: #prevent island in solution 
-                        flag = True
-                        current_obj = [temp_sol, temp_obj]
-                        break
-                    
-            if flag == True:
-                in_solution = current_obj[0]
-                flag = False
-                break
-            
-    #print "interchange finished"
-    return in_solution
+
 
 def spatial_interchage_mk2(in_solution):
     flag = True
@@ -510,13 +445,7 @@ def spatial_interchage_mk4(in_solution):
                 candis = restricted_cadidates([adj_nodes[0]])
                 
                 for i in adj_nodes:
-                    
-                    if len(candis) == 0:
-                        candis = restricted_cadidates([F_FCoords[i]])
-                    else:
-                        candis = [x for x in candis if x in restricted_cadidates([F_FCoords[i]])]
-                
-                
+                    candis = [x for x in candis if x in restricted_cadidates[[i]]]
                 for c in candis:
                     temp2_obj = cal_obj(temp_sol2 + [c])
                     if temp2_obj > current_obj[1]:
@@ -706,15 +635,11 @@ f_FF = open(path + ffDict)
 f_FD = open(path + fdDict)
 
 f_demand = open(path + demand_Dict, 'rb')
-F_Fdict = cPickle.load(f_FF)     
-F_Fdict2 = defaultdict(dict)
-for i in F_Fdict:
-    for j in F_Fdict[i]:
-        F_Fdict2[i][j[0]] = j[1]
-
-#F_Fdict2 = cPickle.load(open(path + ff2Dict))
+F_Fdict = cPickle.load(f_FF)
+F_Fdict2 = cPickle.load(open(path + ff2Dict))
 F_Ddict = cPickle.load(f_FD)
-F_FCoords = cPickle.load(open(path+ ffcords))
+F_FCoords = cPickle.load(ffcords)
+
 facil_pysal = pysal.IOHandlers.pyShpIO.shp_file(path+facilities_f)
 demand_pysal = pysal.IOHandlers.pyShpIO.shp_file(path + demands_f)
 
@@ -743,12 +668,7 @@ fd_delivery = 3.33 *5280
 rc = 0.001
 rc_obj = 0.1
 total_demand = 0.0 
-            
-F_F_close_d = defaultdict(list)
-for i in F_Fdict:
-    for j in F_Fdict[i]:
-        if j[1] <= min_dist:
-            F_F_close_d[i].append(j[0])
+
 
 for i in dDict:
     total_demand += float(dDict[i])
@@ -779,20 +699,19 @@ while temperature > 0.5:
     s_time = time.time()
     new_solution = network_removal_mk2 (new_solution)
     e_time = time.time()
-    #print "removed", new_solution
-    #print "removal time 2: ", e_time - s_time
-    #print "fill start"
+    print "removed", new_solution
+    print "removal time 2: ", e_time - s_time
+    print "fill start"
     s_time = time.time()
     new_solution = greedy_fill(new_solution)
-    n_graph = delivery_network_mk2(new_solution, True, "greey_graph")
     e_time = time.time()
-    #print "fill time: ", e_time - s_time
-    #print new_solution
-    #print "spatial interchange start"
+    print "fill time: ", e_time - s_time
+    print new_solution
+    print "spatial interchange start"
     s_time = time.time()
     new_solution = spatial_interchage_mk4(new_solution)
     e_time = time.time()
-    #print "interchange time: ", e_time - s_time
+    print "interchange time: ", e_time - s_time
     new_graph = delivery_network_mk2(new_solution, True, "new_solution")
     new_obj = cal_obj(new_solution)
     print new_obj
@@ -814,10 +733,13 @@ while temperature > 0.5:
         else:
             sa_count += 1
             #print (new_obj - current_obj)*rc/temperature
-            if math.exp((new_obj - current_obj)*rc/temperature) == 1:
-                print "stucted"
+            comp = math.exp((new_obj - current_obj)*rc/temperature)
+            if comp == 1:
+                print "stucked"
                 print "s"
+                
             if random.random() < math.exp((new_obj - current_obj)*rc/temperature):
+                
                 solution_sites = new_solution
                 #print "bad solution accepted"
                 print "new but bad objective: ", new_obj
