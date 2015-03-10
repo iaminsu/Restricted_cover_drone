@@ -537,7 +537,11 @@ def spatial_interchage_mk4(in_solution):
         if indi == True:
             break
     return in_solution
-            
+
+
+
+
+
 def greedy_fill(in_solution=[]):
     isolation = True
     tt = 0 
@@ -795,6 +799,9 @@ while temperature > 0.5:
     #print "removed", new_solution
     #print "removal time 2: ", e_time - s_time
     #print "fill start"
+    print "removed obj: ", cal_obj(new_solution)
+    new_solution = spatial_interchage_mk4(new_solution)
+    print "improved obj before greedy: ", cal_obj(new_solution)
     s_time = time.time()
     new_solution = greedy_fill(new_solution)
     n_graph = delivery_network_mk2(new_solution, True, "greey_graph")
