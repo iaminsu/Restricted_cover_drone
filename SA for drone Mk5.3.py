@@ -34,6 +34,9 @@
 #Mk5.2 
 #fix issue with new dictionary files 
 
+#Mk5.3
+#modification in SA algorithm
+# - "remember" the best solution ever, and if the final solution is inferior then the recored best solution, roll back to the best. 
 
 import pysal,  shapefile, networkx, time, cPickle, random, math, copy
 from shapely.geometry import Point, Polygon, LineString, MultiPoint, MultiPolygon
@@ -42,7 +45,7 @@ from collections import defaultdict
 
 path = "/Users/insuhong/Dropbox/research/Distance restricted covering model/Locating recharging station/data4/"
 ffDict = "FF_old_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
-#ff2Dict = "FF2_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
+
 fdDict = "FD_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
 demand_Dict = "demands.txt"
 facilities_f = "sample_sites_2.shp"
@@ -589,9 +592,9 @@ def greedy_fill(in_solution=[]):
             nn = delivery_network_mk2(new_sol, True, "failed_greedy")
             chk_feasibility_all(new_sol, True)
             f = raw_input()        
-    print "total time: ", tt
-    print "obj time: ", obj_time
-    print "average pool: ", float(pool_len)/loop_no
+    #print "total time: ", tt
+    #print "obj time: ", obj_time
+    #print "average pool: ", float(pool_len)/loop_no
     return in_solution
 
 def greedy_fill_mk2(in_solution):
@@ -671,9 +674,9 @@ def network_removal_mk2 (in_solution):
     #sites are randomly selected (not based on nn distance)
     #if some sites are separated from the delivery network, remove them also regardless of removal number. 
     remove_no = int(remove_percent * len(in_solution))
-    print remove_no
+    #print remove_no
     removable_sites = []
-    print "in_solution:", in_solution
+    #print "in_solution:", in_solution
     for site in in_solution:
         if site not in warehouses_ID:
             temp = copy.copy(in_solution)
@@ -684,8 +687,8 @@ def network_removal_mk2 (in_solution):
                 removable_sites.append(site)
     if len(removable_sites) < remove_no:
         remove_no = len(removable_sites)
-    print "removeable,", removable_sites
-    print remove_no
+    #print "removeable,", removable_sites
+    #print remove_no
     while remove_no > 0:
         r_site = random.choice(removable_sites)
         removable_sites.remove(r_site)
@@ -696,11 +699,11 @@ def network_removal_mk2 (in_solution):
         else:
             remove_no -= 1
     
-    print "removed", in_solution
+    #print "removed", in_solution
     temp_graph = delivery_network_mk2(in_solution, True)
     additional_removal = []
     
-    print temp_graph 
+    #print temp_graph 
     for site in in_solution:
         if site not in warehouses_ID:
             site_coords = (facil_shp[site].x, facil_shp[site].y)
@@ -781,6 +784,9 @@ for i in dDict:
 #initializing seed solution (random) 
 
 
+delivery_network_mk2([127, 324, 9, 376, 19, 360, 243, 75, 212, 435, 194, 367, 205, 183, 13, 287, 380, 49, 334, 482], True, "final_solution")
+print "1900621.0"
+
 print "initializing solution"
 
 solution_sites.extend(warehouses_ID)
@@ -790,6 +796,7 @@ solution_sites = random_fill(solution_sites)
 solution_graph = delivery_network_mk2(solution_sites, True)
 print "solution initialized"
 
+best_solution = [solution_sites, cal_obj(solution_sites)]
 
 
 while temperature > 0.5:
@@ -806,9 +813,9 @@ while temperature > 0.5:
     #print "removed", new_solution
     #print "removal time 2: ", e_time - s_time
     #print "fill start"
-    print "removed obj: ", cal_obj(new_solution)
+    #print "removed obj: ", cal_obj(new_solution)
     new_solution = spatial_interchage_mk4(new_solution)
-    print "improved obj before greedy: ", cal_obj(new_solution)
+    #print "improved obj before greedy: ", cal_obj(new_solution)
     s_time = time.time()
     new_solution = greedy_fill(new_solution)
     n_graph = delivery_network_mk2(new_solution, True, "greey_graph")
@@ -827,8 +834,11 @@ while temperature > 0.5:
     
     if new_obj > current_obj:
         solution_sites = new_solution
+        if new_obj > best_solution[1]:
+            best_solution = [new_solution, new_obj]
         sa_count = 0 
         print "new solution accepted"
+        print "best solution so far: ", best_solution[1]
         #print "new objective value: ", new_obj
         #print "new solution: ", solution_sites
     else:
@@ -854,8 +864,16 @@ while temperature > 0.5:
                 #print "bad solution reputed"
             
 print "solution"                
-print cal_obj_min(solution_sites)
-print solution_sites
+solution_obj = cal_obj(solution_sites)
+if solution_obj > best_solution[1]:
+    print "final solution: ", solution_sites
+    print "Objective value: ", solution_obj
+    final_graph = delivery_network_mk2(solution_sites, True, "final_solution")
+else:
+    print "final solution: ", best_solution[0]
+    print "Objective value: ", best_solution[1]
+    final_graph = delivery_network_mk2(best_solution[0], True, "final_solution")
+
 
             
     
