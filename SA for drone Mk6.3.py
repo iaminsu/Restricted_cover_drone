@@ -38,6 +38,13 @@
 #modification in SA algorithm
 # - "remember" the best solution ever, and if the final solution is inferior then the recored best solution, roll back to the best. 
 
+#Mk6.3 
+#(from 5.3)
+# Considering travel distance 
+
+
+
+
 import pysal,  shapefile, networkx, time, cPickle, random, math, copy, Convexpath_module
 from shapely.geometry import Point, Polygon, LineString, MultiPoint, MultiPolygon
 from collections import defaultdict
@@ -52,7 +59,7 @@ demand_Dict = "demands.txt"
 facilities_f = "sample_sites_2.shp"
 demands_f = "sample_demand_2_p.shp"
 ffcords = "FF_coords_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
-
+wareDist = "w_distance_dict.txt"
 #loading matrices & initialize variables 
 
 def generateGeometry(in_shp):
@@ -599,7 +606,49 @@ def greedy_fill(in_solution=[]):
     return in_solution
 
 def greedy_fill_mk2(in_solution):
-    pass
+    #if ratio of network distance over ESP distance is less than given threshold, accept it. 
+    
+    isolation = True
+    tt = 0 
+    
+    while isolation == True:
+        obj_time = 0 
+        new_sol = [] 
+        stime = time.time()
+        new_sol = copy.copy(in_solution)
+        c_obj = cal_obj(new_sol)
+        loop_no = 0
+        pool_len = 0 
+        while len(new_sol) < p:
+            loop_no += 1
+            #print new_sol
+            pool = restricted_cadidates(new_sol)
+            pool_len += len(pool)
+            temp = []
+            
+            for i in pool:
+                temp_obj = cal_obj(new_sol + [i])
+                temp.append((temp_obj, i))
+            temp.sort()
+            temp.reverse()
+            for i in temp:
+                temp_graph = delivery_network_mk2(new_sol+[i[1]], False)
+                ind = True
+                for w in warehouses_ID:
+                    dist = networkx.dijkstra_path_length(temp_graph, warehouse_coords[w], facil_shp[i[0]])
+                    if dist >= ware_dist[w][i[1]] * dist_limit_ratio:
+                        ind = False
+                if ind = True:
+                    c_obj = i[0]
+                    new_sol = new_sol + [i[1]]
+                    break
+                        
+        if delivery_network(new_sol, False) != None:
+        #if chk_feasibility_all(new_sol, False):
+            in_solution =[]
+            in_solution = copy.copy(new_sol)
+            isolation = False
+    return in_solution
 
 
 def random_fill(in_solution=[]):
@@ -799,7 +848,7 @@ def network_removal_mk2 (in_solution):
 
 f_FF = open(path + ffDict)
 f_FD = open(path + fdDict)
-
+ware_dist = open(path + wareDist)
 f_demand = open(path + demand_Dict, 'rb')
 F_Fdict = cPickle.load(f_FF)     
 F_Fdict2 = defaultdict(dict)
@@ -825,7 +874,7 @@ for warehouse in warehouses_ID:
 solution_sites = []
 covered_demand = []
 objective_value = 0
-p = 25  # 
+p = 15  # 
 temperature = 30   #end temperature
 max_iter = 3   #iteration limit
 terminate_temp = 1         
@@ -836,10 +885,11 @@ fd_fullPayload = 5 * 5280
 
 fd_empty = 10 * 5280
 fd_delivery = 3.33 *5280 
-min_dist = fd_delivery *0.6
+min_dist = fd_delivery
 rc = 0.001
 rc_obj = 0.1
 total_demand = 0.0 
+dist_limit_ratio = 1.4
             
 F_F_close_d = defaultdict(list)
 for i in F_Fdict:
