@@ -7,9 +7,9 @@ arcpy.env.overwriteOutput = True
 fd_delivery = 3.33
 # Variables 
 
-path = "F:\\Dropbox\\research\\Distance restricted covering model\\Locating recharging station\\data4\\"
-demand = "sample_demand_2_p.shp"
-facil = "sample_sites_2.shp"
+path = "F:\\Dropbox\\research\\Distance restricted covering model\\Locating recharging station\\data_all_ph2\\"
+demand = "demands.shp"
+facil = "facils.shp"
 demand_dict = {}
 facil_dict = {}
 id_demand = "FID"
@@ -44,9 +44,9 @@ while fc:
 
 
 f2 = open(path + "demands.txt", 'w')
-f3 = open(path + "facil_initial_demand.txt", 'w')
+#f3 = open(path + "facil_initial_demand.txt", 'w')
 cPickle.dump(demand_dict, f2)
-cPickle.dump(facil_dict, f3)
+#cPickle.dump(facil_dict, f3)
 f2.close()
-f3.close()
+#f3.close()
 

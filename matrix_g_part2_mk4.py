@@ -594,12 +594,12 @@ class convexMatrix():
 
 path_imac = "/Users/insuhong/Dropbox/research/Convexpath Approach/HPC/data4/"
 path_home = "F:\\data\\grid\\"
-path_air = "/Users/insuhong/Dropbox/research/Distance restricted covering model/Locating recharging station/data5/"
+path_air = "/Users/insuhong/Dropbox/research/Distance restricted covering model/Locating recharging station/data_all_ph2/"
 path_ubuntu = "/home/insu/Dropbox/research/Convexpath Approach/HPC/data/"
 
 start = time.time()
-#a = convexMatrix(path_air, "facils_f_22000.shp", "facils_f_22000.shp", "obstacles_p.shp", "FF")
-#print "ff is done"
-b = convexMatrix(path_air, "facils_f_22000.shp", "demands_f_22000.shp", "obstacles_p.shp", "FD")
+a = convexMatrix(path_air, "facils.shp", "facils.shp", "obstacles_p.shp", "FF")
+print "ff is done"
+b = convexMatrix(path_air, "facils.shp", "demands.shp", "obstacles_p.shp", "FD")
 stop = time.time()
 print stop - start

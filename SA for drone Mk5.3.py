@@ -38,13 +38,14 @@
 #modification in SA algorithm
 # - "remember" the best solution ever, and if the final solution is inferior then the recored best solution, roll back to the best. 
 
-import pysal,  shapefile, networkx, time, cPickle, random, math, copy
+import pysal,  shapefile, networkx, time, cPickle, random, math, copy, Convexpath_module
 from shapely.geometry import Point, Polygon, LineString, MultiPoint, MultiPolygon
 from collections import defaultdict
 
 
 path = "/Users/insuhong/Dropbox/research/Distance restricted covering model/Locating recharging station/data4/"
 ffDict = "FF_old_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
+obstacles_f = "obstacles_p"
 
 fdDict = "FD_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
 demand_Dict = "demands.txt"
@@ -625,6 +626,73 @@ def random_fill(in_solution=[]):
             #f = raw_input()
     return in_solution
 
+
+def random_fill_mk2(in_solution):
+    
+    # 1)2 warehouses case:
+    #  - generate a corridor using ESP between them 
+    #  - random select facilities in the corridor until warehoused are connected 
+    #  - random select remaining facilities 
+    # 2)More-than-2 warehouses case:
+    #  - generate a convex hull for warehouses 
+    #  - derive centroid of convex hull 
+    #  - generate a corridor based on the ESPs that connect from warehoused to centroid 
+    #  - random select facilities in the corridor until warehoused are connected 
+    #  - random select remaining facilities 
+    isolation = True
+    if len(warehouses_ID) == 2:
+        w_origin = facil_shp[warehouses_ID[0]]
+        w_destination = facil_shp[warehouses_ID[1]]
+        a = Convexpath_module.Convexpath_shapely(path, w_origin, w_destination, obstacles_shp)
+        w_esp = a.esp  #esp is Linestring object
+        w_corridor = w_esp.buffer(fd_delivery*0.5)
+        
+    else:
+        w_points = []
+        for i in warehouse_coords:
+            w_points.append(i)
+        w_mp = MultiPoint(w_points)
+        w_ch = w_mp.convex_hull
+        w_cp = w_ch.centroid
+        w_corridor = []
+        for i in warehouse_coords:
+            a = Convexpath_module.Convexpath_shapely(path, Point(i), w_cp, obstacles_shp)
+            w_corridor.append(a)
+        
+        
+    #w = shapefile.Writer(shapefile.POLYGON)
+    #w.field('net')
+    #for obs in [w_corridor]:
+        #w.poly(parts=[[list(x) for x in list(obs.exterior.coords)]])
+        #w.record('ff')
+    #w.save(path + "w_corridor")      
+    while isolation == True: 
+        new_sol = []
+        new_sol = copy.copy(in_solution)
+        
+        while len(new_sol) < p:
+            if delivery_network_mk3(new_sol, False) == None:
+                random_pool = restricted_cadidates(new_sol)
+                #print new_sol
+                #print random_pool
+                corridor_pool = []
+                for i in random_pool:
+                    if w_corridor.intersects(facil_shp[i]):
+                        corridor_pool.append(i)
+                if len(corridor_pool) != 0:
+                    new_sol.append(random.choice(corridor_pool))
+                else: 
+                    new_sol.append(random.choice(random_pool))
+            else:
+                random_pool = restricted_cadidates(new_sol)
+                new_sol.append(random.choice(random_pool))
+        if delivery_network(new_sol, False) != None:
+            in_solution = []
+            in_solution = copy.copy(new_sol)
+            isolation = False
+    return in_solution
+
+
 def network_removal (in_solution):
     #remove certain number of sites from solution. But if a site is part of critical link between warehouses, 
     #the site will not be removed. 
@@ -744,8 +812,9 @@ F_Ddict = cPickle.load(f_FD)
 F_FCoords = cPickle.load(open(path+ ffcords))
 facil_pysal = pysal.IOHandlers.pyShpIO.shp_file(path+facilities_f)
 demand_pysal = pysal.IOHandlers.pyShpIO.shp_file(path + demands_f)
+obstacles_pysal = pysal.IOHandlers.pyShpIO.shp_file(path + obstacles_f)
 
-
+obstacles_shp = generateGeometry(obstacles_pysal)
 dDict = cPickle.load(f_demand)
 facil_shp = generateGeometry(facil_pysal)
 demand_shp = generateGeometry(demand_pysal)
@@ -756,7 +825,7 @@ for warehouse in warehouses_ID:
 solution_sites = []
 covered_demand = []
 objective_value = 0
-p = 20  # 
+p = 15  # 
 temperature = 30   #end temperature
 max_iter = 3   #iteration limit
 terminate_temp = 1         
@@ -764,9 +833,10 @@ temp_ratio = 0.15
 sa_count = 0
 remove_percent = 0.2 
 fd_fullPayload = 5 * 5280 
-min_dist = fd_fullPayload * 0.7
+
 fd_empty = 10 * 5280
 fd_delivery = 3.33 *5280 
+min_dist = fd_delivery
 rc = 0.001
 rc_obj = 0.1
 total_demand = 0.0 
@@ -788,7 +858,7 @@ for i in dDict:
 print "initializing solution"
 
 solution_sites.extend(warehouses_ID)
-solution_sites = random_fill(solution_sites)   
+solution_sites = random_fill_mk2(solution_sites)   
 #print solution_sites
 
 solution_graph = delivery_network_mk2(solution_sites, True)
