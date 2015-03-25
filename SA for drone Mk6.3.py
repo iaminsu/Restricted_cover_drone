@@ -635,10 +635,13 @@ def greedy_fill_mk2(in_solution):
                 temp_graph = delivery_network_mk2(new_sol+[i[1]], False)
                 ind = True
                 for w in warehouses_ID:
-                    dist = networkx.dijkstra_path_length(temp_graph, warehouse_coords[w], facil_shp[i[0]])
+                    #dist = networkx.dijkstra_path(temp_graph, facil_shp[w], facil_shp[i[1]])
+                    
+                    dist = networkx.dijkstra_path_length(temp_graph, (facil_shp[w].x,facil_shp[w].y), (facil_shp[i[1]].x,facil_shp[i[1]].y))
+                    
                     if dist >= ware_dist[w][i[1]] * dist_limit_ratio:
                         ind = False
-                if ind = True:
+                if ind == True:
                     c_obj = i[0]
                     new_sol = new_sol + [i[1]]
                     break
@@ -848,7 +851,7 @@ def network_removal_mk2 (in_solution):
 
 f_FF = open(path + ffDict)
 f_FD = open(path + fdDict)
-ware_dist = open(path + wareDist)
+ware_dist = cPickle.load(open(path + wareDist))
 f_demand = open(path + demand_Dict, 'rb')
 F_Fdict = cPickle.load(f_FF)     
 F_Fdict2 = defaultdict(dict)
@@ -874,7 +877,7 @@ for warehouse in warehouses_ID:
 solution_sites = []
 covered_demand = []
 objective_value = 0
-p = 15  # 
+p = 25  # 
 temperature = 30   #end temperature
 max_iter = 3   #iteration limit
 terminate_temp = 1         
@@ -889,7 +892,7 @@ min_dist = fd_delivery
 rc = 0.001
 rc_obj = 0.1
 total_demand = 0.0 
-dist_limit_ratio = 1.4
+dist_limit_ratio = 2
             
 F_F_close_d = defaultdict(list)
 for i in F_Fdict:
@@ -935,7 +938,7 @@ while temperature > 0.5:
     new_solution = spatial_interchage_mk4(new_solution)
     #print "improved obj before greedy: ", cal_obj(new_solution)
     s_time = time.time()
-    new_solution = greedy_fill(new_solution)
+    new_solution = greedy_fill_mk2(new_solution)
     n_graph = delivery_network_mk2(new_solution, True, "greey_graph")
     e_time = time.time()
     #print "fill time: ", e_time - s_time
