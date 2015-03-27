@@ -25,7 +25,7 @@ obs_pysal = pysal.IOHandlers.pyShpIO.shp_file(path+obstacles_f)
 facil_shp = generateGeometry(facil_pysal)
 obs_shp = generateGeometry(obs_pysal)
 
-warehouse_ID = [127,324]
+warehouse_ID = [127,324, 411]
 w_dis_dict = defaultdict(dict)
 for warehouse in warehouse_ID:
     w_Point = facil_shp[warehouse]

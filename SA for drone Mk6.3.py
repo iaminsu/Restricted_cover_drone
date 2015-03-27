@@ -40,14 +40,16 @@
 
 #Mk6.3 
 #(from 5.3)
-# Considering travel distance 
-
-
+# New objective function: number of covered population is adjusted by average deviation ratio. 
+# Deviation ratio: for each selecte site, (network shortest distance)/ESP distance
+# for greedy and random fill
+#random fill bug fixed: centroid of corridor cannot be located in interior of obstacle 
 
 
 import pysal,  shapefile, networkx, time, cPickle, random, math, copy, Convexpath_module
 from shapely.geometry import Point, Polygon, LineString, MultiPoint, MultiPolygon
 from collections import defaultdict
+from shapely.ops import cascaded_union
 
 
 path = "/Users/insuhong/Dropbox/research/Distance restricted covering model/Locating recharging station/data4/"
@@ -88,8 +90,25 @@ def cal_obj(in_solution):
         obj += float(dDict[de])
     return obj
 
-
-
+def cal_obj_mk2(in_solution):
+    #Calculate obj with deviation ratio
+    sol_graph = delivery_network_mk2(in_solution, False)
+    ratio_l = []
+    for w in warehouses_ID:
+        for site in in_solution:
+            if site != w:
+                try:
+                    n_dist = networkx.dijkstra_path_length(sol_graph, (facil_shp[w].x,facil_shp[w].y), (facil_shp[site].x,facil_shp[site].y))
+                except:
+                    print in_solution
+                    ss = delivery_network_mk2(in_solution, True, "err_graph")
+                    raise networkx.exception.NetworkXNoPath
+                d_ratio = n_dist/ware_dist[w][site]
+                ratio_l.append(d_ratio)
+    avg_ratio = sum(ratio_l)/float(len(ratio_l))
+    obj_n = cal_obj(in_solution)
+    obj_r = obj_n * 1/avg_ratio
+    return obj_r
 
 def chk_isolation(in_sol, wh_ids):   
     #return false if sites are linked to any of warehouses 
@@ -225,6 +244,9 @@ def removal(in_solution, remove_no):
     return in_solution
                           
 def delivery_network(in_solution, s_file, in_name = "temp_graph"):
+    #Generate graph
+    #Check connectivity between warehouses
+    #Check connectivity to each site 
     arc_list = []
     arc_shp_list = []
     connectivity = True
@@ -270,6 +292,7 @@ def delivery_network(in_solution, s_file, in_name = "temp_graph"):
     
     
 def delivery_network_mk2(in_solution, s_file, in_name = "temp_graph"):
+    #Generate graph, does not check connectivity
     arc_list = []
     arc_shp_list = []
     connectivity = True
@@ -555,7 +578,108 @@ def spatial_interchage_mk4(in_solution):
     return in_solution
 
 
+def spatial_interchage_mk5(in_solution):
+    #modified interchange algorithm
+    #conventional interchange algorithm cannot be applied since candidate set needs to be updated after any change in
+    #current solution. This interchange algorithm *change only 1* site!!
+    #1) if a site is critical site: find better site that can maintaining connection 
+    #2) if a site is not critical site: find better site from restricted candidate set for all other sites in current solution 
+    
+    #mk5: include distance restriction for evaluation 
+    
+    current_obj = [in_solution, cal_obj(in_solution)]
+    in_graph = delivery_network_mk2(in_solution, False)
+    temp_sol = copy.copy(in_solution)        
+    for site in temp_sol:
+        indi = False
+        if site not in warehouses_ID:
+            temp_sol2 = copy.copy(in_solution)
+            temp_sol2.remove(site)
+            if delivery_network_mk3(temp_sol2, False) == None:  #site is critical node
+                #then only candidates that can restablish connection are considered
+                adj_nodes = in_graph[(facil_shp[site].x, facil_shp[site].y)].keys()
+                candis = restricted_cadidates([adj_nodes[0]])
+                
+                for i in adj_nodes:
+                    
+                    if len(candis) == 0:
+                        candis = restricted_cadidates([F_FCoords[i]])
+                    else:
+                        candis = [x for x in candis if x in restricted_cadidates([F_FCoords[i]])]
 
+                for c in candis:
+                    temp2_obj = cal_obj(temp_sol2 + [c])
+                    if temp2_obj > current_obj[1]:
+                        temp_graph = delivery_network_mk2(temp_sol2 + [c], False)
+                        ind = True
+                        for w in warehouses_ID:
+                            dist = networkx.dijkstra_path_length(temp_graph, (facil_shp[w].x,facil_shp[w].y), (facil_shp[c].x,facil_shp[c].y))
+                            if dist >= ware_dist[w][c] * dist_limit_ratio:
+                                ind = False
+                        if ind == True:
+                            in_solution = temp_sol2 + [c]
+                            current_obj = [in_solution, cal_obj(in_solution)]
+                            indi = True
+            else:  #non-critical node
+                candis = restricted_cadidates(temp_sol2)
+                for c in candis:
+                    temp2_obj = cal_obj(temp_sol2 + [c])
+                    if temp2_obj > current_obj[1]:
+                        temp_graph = delivery_network_mk2(temp_sol2 + [c], False)
+                        ind = True
+                        for w in warehouses_ID:
+                            dist = networkx.dijkstra_path_length(temp_graph, (facil_shp[w].x,facil_shp[w].y), (facil_shp[c].x,facil_shp[c].y))
+                            if dist >= ware_dist[w][c] * dist_limit_ratio:
+                                ind = False
+                        if ind == True:
+                            if delivery_network(temp_sol2, False) != None:
+                                in_solution = temp_sol2 + [c]
+                                current_obj = [in_solution, cal_obj(in_solution)]                        
+                                indi = True
+
+        if indi == True:
+            break
+    return in_solution
+
+
+
+def spatial_interchage_mk6(in_solution):
+    #modified interchange algorithm
+    #conventional interchange algorithm cannot be applied since candidate set needs to be updated after any change in
+    #current solution. This interchange algorithm *change only 1* site!!
+    #1) if a site is critical site: find better site that can maintaining connection 
+    #2) if a site is not critical site: find better site from restricted candidate set for all other sites in current solution 
+    
+    current_obj = [in_solution, cal_obj_mk2(in_solution)]
+    in_graph = delivery_network_mk2(in_solution, False)
+    temp_sol = copy.copy(in_solution)        
+    for site in temp_sol:
+        indi = False
+        if site not in warehouses_ID:
+            temp_sol2 = copy.copy(in_solution)
+            temp_sol2.remove(site)
+            
+            adj_nodes = in_graph[(facil_shp[site].x, facil_shp[site].y)].keys()
+            candis = restricted_cadidates([adj_nodes[0]])
+            
+            for i in adj_nodes:
+                
+                if len(candis) == 0:
+                    candis = restricted_cadidates([F_FCoords[i]])
+                else:
+                    candis = [x for x in candis if x in restricted_cadidates([F_FCoords[i]])]
+            
+            
+            for c in candis:
+                temp2_obj = cal_obj_mk2(temp_sol2 + [c])
+                if temp2_obj > current_obj[1]:
+                    in_solution = temp_sol2 + [c]
+                    current_obj = [in_solution, temp2_obj]
+                    indi = True
+                    
+        if indi == True:
+            break
+    return in_solution
 
 
 def greedy_fill(in_solution=[]):
@@ -654,6 +778,34 @@ def greedy_fill_mk2(in_solution):
     return in_solution
 
 
+def greedy_fill_mk3(in_solution=[]):
+    #same as mk1 except it uses cal_obj_mk2
+    isolation = True
+    while isolation == True:
+        new_sol = [] 
+        new_sol = copy.copy(in_solution)
+        c_obj = cal_obj_mk2(new_sol)
+        loop_no = 0
+        pool_len = 0 
+        while len(new_sol) < p:
+            loop_no += 1
+            pool = restricted_cadidates(new_sol)
+            pool_len += len(pool)
+            temp = []
+            for i in pool:
+                temp_obj = cal_obj_mk2(new_sol + [i])
+                temp.append((temp_obj, i))
+            temp.sort()
+            temp.reverse()
+            c_obj = temp[0][0]
+            new_sol = new_sol + [temp[0][1]]
+        if delivery_network(new_sol, False) != None:
+            in_solution =[]
+            in_solution = copy.copy(new_sol)
+            isolation = False
+    return in_solution
+
+
 def random_fill(in_solution=[]):
     isolation = True
     tt = 0
@@ -706,18 +858,29 @@ def random_fill_mk2(in_solution):
         w_mp = MultiPoint(w_points)
         w_ch = w_mp.convex_hull
         w_cp = w_ch.centroid
-        w_corridor = []
+        for obs in obstacles_shp:
+            if obs.contains(w_cp):
+                search_circle = w_cp.buffer(search_radius)
+                for i in facil_shp:
+                    if search_circle.contains(i):
+                        w_cp = i
+                        break
+                break
+        
+        w_c_lines = []
         for i in warehouse_coords:
             a = Convexpath_module.Convexpath_shapely(path, Point(i), w_cp, obstacles_shp)
-            w_corridor.append(a)
+            w_c_lines.append(a.esp.buffer(fd_delivery * 0.5))
+        w_corridor = cascaded_union(w_c_lines)
+
         
         
-    #w = shapefile.Writer(shapefile.POLYGON)
-    #w.field('net')
-    #for obs in [w_corridor]:
-        #w.poly(parts=[[list(x) for x in list(obs.exterior.coords)]])
-        #w.record('ff')
-    #w.save(path + "w_corridor")      
+    w = shapefile.Writer(shapefile.POLYGON)
+    w.field('net')
+    for obs in [w_corridor]:
+        w.poly(parts=[[list(x) for x in list(obs.exterior.coords)]])
+        w.record('ff')
+    w.save(path + "w_corridor")      
     while isolation == True: 
         new_sol = []
         new_sol = copy.copy(in_solution)
@@ -870,29 +1033,29 @@ obstacles_shp = generateGeometry(obstacles_pysal)
 dDict = cPickle.load(f_demand)
 facil_shp = generateGeometry(facil_pysal)
 demand_shp = generateGeometry(demand_pysal)
-warehouses_ID = [127,324]    #id_f of warehouses
+warehouses_ID = [127,324, 411]    #id_f of warehouses
 warehouse_coords = []
 for warehouse in warehouses_ID:
     warehouse_coords.append((facil_shp[warehouse].x, facil_shp[warehouse].y))
 solution_sites = []
 covered_demand = []
-objective_value = 0
-p = 25  # 
-temperature = 30   #end temperature
+objective_value = 0   #initialize objective value 
+p = 20  #number of stations to be sited including existing warehouses 
+temperature = 30   #start temperature
 max_iter = 3   #iteration limit
 terminate_temp = 1         
-temp_ratio = 0.15
+temp_ratio = 0.15   
 sa_count = 0
 remove_percent = 0.2 
-fd_fullPayload = 5 * 5280 
-
-fd_empty = 10 * 5280
-fd_delivery = 3.33 *5280 
+fd_fullPayload = 5 * 5280    #flight distance with full payload
+fd_empty = 10 * 5280         #flight distance with empty payload 
+fd_delivery = 3.33 *5280     #max flight distance for safe return after delivery 
+search_radius = 2 * 5280 
 min_dist = fd_delivery
 rc = 0.001
 rc_obj = 0.1
 total_demand = 0.0 
-dist_limit_ratio = 2
+dist_limit_ratio = 1.4
             
 F_F_close_d = defaultdict(list)
 for i in F_Fdict:
@@ -917,42 +1080,31 @@ solution_sites = random_fill_mk2(solution_sites)
 solution_graph = delivery_network_mk2(solution_sites, True)
 print "solution initialized"
 
-best_solution = [solution_sites, cal_obj(solution_sites)]
+best_solution = [solution_sites, cal_obj_mk2(solution_sites)]
 
-
+number = 0
 while temperature > 0.5:
-    
+    number += 1
     current_solution = copy.copy(solution_sites)
-    current_graph = delivery_network_mk2(current_solution, True, "currrent_graph")
-    current_obj = cal_obj(current_solution)
+    current_graph = delivery_network_mk2(current_solution, True, "currrent_graph_" + str(number))
+    current_obj = cal_obj_mk2(current_solution)
     print "current Objective value: ", current_obj
     
     new_solution = copy.copy(current_solution)
     s_time = time.time()
     new_solution = network_removal_mk2 (new_solution)
     e_time = time.time()
-    #print "removed", new_solution
-    #print "removal time 2: ", e_time - s_time
-    #print "fill start"
-    #print "removed obj: ", cal_obj(new_solution)
-    new_solution = spatial_interchage_mk4(new_solution)
-    #print "improved obj before greedy: ", cal_obj(new_solution)
     s_time = time.time()
-    new_solution = greedy_fill_mk2(new_solution)
+    new_solution = greedy_fill_mk3(new_solution)
     n_graph = delivery_network_mk2(new_solution, True, "greey_graph")
     e_time = time.time()
-    #print "fill time: ", e_time - s_time
-    #print new_solution
-    #print "spatial interchange start"
     s_time = time.time()
-    new_solution = spatial_interchage_mk4(new_solution)
+    new_solution = spatial_interchage_mk6(new_solution)
     e_time = time.time()
-    #print "interchange time: ", e_time - s_time
-    new_graph = delivery_network_mk2(new_solution, True, "new_solution")
-    new_obj = cal_obj(new_solution)
+
+    new_graph = delivery_network_mk2(new_solution, True, "new_solution_" + str(number))
+    new_obj = cal_obj_mk2(new_solution)
     print new_obj
-    #print new_obj - current_obj
-    
 
     if new_obj > current_obj:
         if new_obj < best_solution[1]:
@@ -984,8 +1136,6 @@ while temperature > 0.5:
             sa_count = 0 
             print "new solution accepted"
         print "best solution so far: ", best_solution[1]
-        #print "new objective value: ", new_obj
-        #print "new solution: ", solution_sites
     else:
         if sa_count >= max_iter:
             sa_count = 0
@@ -996,15 +1146,11 @@ while temperature > 0.5:
         else:
             sa_count += 1
             print "SA COUNT: ", sa_count
-            #print (new_obj - current_obj)*rc/temperature
-            if math.exp((new_obj - current_obj)*rc/temperature) == 1:
-                print "stucted"
-                print "s"
             if random.random() < math.exp((new_obj - current_obj)*rc/temperature):
                 solution_sites = new_solution
-                #print "bad solution accepted"
+                
                 print "new but bad objective: ", new_obj
-                #print "new but bad solution: ", new_solution
+                
                 if sa_count >= max_iter:
                     sa_count = 0
                     temperature = temperature - (temperature * temp_ratio)
@@ -1022,14 +1168,16 @@ while temperature > 0.5:
             
             
 print "solution"                
-solution_obj = cal_obj(solution_sites)
+solution_obj = cal_obj_mk2(solution_sites)
 if solution_obj > best_solution[1]:
     print "final solution: ", solution_sites
-    print "Objective value: ", solution_obj
+    print "Objective value_r: ", solution_obj
+    print "Covered population: ", cal_obj(solution_sites)
     final_graph = delivery_network_mk2(solution_sites, True, "final_solution")
 else:
     print "final solution: ", best_solution[0]
-    print "Objective value: ", best_solution[1]
+    print "Objective value_r: ", best_solution[1]
+    print "Covered population: ", cal_obj(best_solution[0])
     final_graph = delivery_network_mk2(best_solution[0], True, "final_solution")
 
 
