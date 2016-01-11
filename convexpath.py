@@ -25,6 +25,8 @@ class Convexpath():
         ODPairs = []
         for i in self.originPoints:
             for j in self.destinationPoints:
+                if i == j:
+                    continue
                 ODPairs.append([(i,j), pair_number])
                 pair_number += 1
         f = open(path + "Results" + self.version_name + origin + "_" + destination +"_"+obstacles+".txt", "w")
@@ -569,12 +571,12 @@ class Convexpath():
   
 #path_macPro = "/Users/insu/Downloads/data_higher/"      
 #path_imac = "/Users/insuhong/Downloads/grid2/"
-#path_home = "F:\\data\\grid\\"
+path = "f:\\Dropbox\\research\\Distance restricted covering model\\Locating recharging station\\data7\\"
 #path_air = "/Users/insuhong/Dropbox/research/Convexpath Approach/testField/data/"
 #path_ubuntu = "/home/insu/Dropbox/research/Convexpath Approach/Convexpath_HiDensity/data/"
 
-#start = time.time()
-#a = Convexpath(path_imac, "large_origin_4_0.shp", "large_destination_4_0.shp", "asu_800.shp")
+start = time.time()
+a = Convexpath(path, "solution_15_p.shp", "solution_15_p.shp", "obstacles.shp")
 
-#stop = time.time()
-#print stop - start
+stop = time.time()
+print stop - start

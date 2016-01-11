@@ -46,13 +46,13 @@
 #random fill bug fixed: centroid of corridor cannot be located in interior of obstacle 
 
 
-import pysal,  shapefile, networkx, time, cPickle, random, math, copy, Convexpath_module
+import pysal, shapefile, networkx, time, cPickle, random, math, copy, Convexpath_module
 from shapely.geometry import Point, Polygon, LineString, MultiPoint, MultiPolygon
 from collections import defaultdict
 from shapely.ops import cascaded_union
 
 
-path = "/Users/insuhong/Dropbox/research/Distance restricted covering model/Locating recharging station/data4/"
+path = "f:\\Dropbox\\research\\Distance restricted covering model\\Locating recharging station\\data4\\"
 ffDict = "FF_old_Dictsample_sites_2.shp_sample_demand_2_p.shp_obstacles_p.shp.txt"
 obstacles_f = "obstacles_p"
 
@@ -957,9 +957,7 @@ def network_removal_mk2 (in_solution):
     #sites are randomly selected (not based on nn distance)
     #if some sites are separated from the delivery network, remove them also regardless of removal number. 
     remove_no = int(remove_percent * len(in_solution))
-    #print remove_no
     removable_sites = []
-    #print "in_solution:", in_solution
     for site in in_solution:
         if site not in warehouses_ID:
             temp = copy.copy(in_solution)
@@ -970,8 +968,7 @@ def network_removal_mk2 (in_solution):
                 removable_sites.append(site)
     if len(removable_sites) < remove_no:
         remove_no = len(removable_sites)
-    #print "removeable,", removable_sites
-    #print remove_no
+
     while remove_no > 0:
         r_site = random.choice(removable_sites)
         removable_sites.remove(r_site)
@@ -981,12 +978,10 @@ def network_removal_mk2 (in_solution):
             in_solution.append(r_site)
         else:
             remove_no -= 1
-    
-    #print "removed", in_solution
+
     temp_graph = delivery_network_mk2(in_solution, True)
     additional_removal = []
     
-    #print temp_graph 
     for site in in_solution:
         if site not in warehouses_ID:
             site_coords = (facil_shp[site].x, facil_shp[site].y)
@@ -1002,7 +997,7 @@ def network_removal_mk2 (in_solution):
                     additional_removal.append(site)
     in_solution = [x for x in in_solution if not x in additional_removal]
     if len(in_solution) < 5:
-        print "shit again?"
+        print "again?"
         print "r", additional_removal
         print in_solution
         r = raw_input()
@@ -1040,7 +1035,7 @@ for warehouse in warehouses_ID:
 solution_sites = []
 covered_demand = []
 objective_value = 0   #initialize objective value 
-p = 20  #number of stations to be sited including existing warehouses 
+p = 27  #number of stations to be sited including existing warehouses 
 temperature = 30   #start temperature
 max_iter = 3   #iteration limit
 terminate_temp = 1         
@@ -1070,39 +1065,37 @@ for i in dDict:
 #initializing seed solution (random) 
 
 
-
+s_time = time.time()
 print "initializing solution"
 
 solution_sites.extend(warehouses_ID)
 solution_sites = random_fill_mk2(solution_sites)   
 #print solution_sites
 
-solution_graph = delivery_network_mk2(solution_sites, True)
+solution_graph = delivery_network_mk2(solution_sites, False)
 print "solution initialized"
 
 best_solution = [solution_sites, cal_obj_mk2(solution_sites)]
 
-number = 0
+
 while temperature > 0.5:
-    number += 1
+    
     current_solution = copy.copy(solution_sites)
-    current_graph = delivery_network_mk2(current_solution, True, "currrent_graph_" + str(number))
+    current_graph = delivery_network_mk2(current_solution, False)
     current_obj = cal_obj_mk2(current_solution)
     print "current Objective value: ", current_obj
     
     new_solution = copy.copy(current_solution)
-    s_time = time.time()
+   
     new_solution = network_removal_mk2 (new_solution)
-    e_time = time.time()
-    s_time = time.time()
-    new_solution = greedy_fill_mk3(new_solution)
-    n_graph = delivery_network_mk2(new_solution, True, "greey_graph")
-    e_time = time.time()
-    s_time = time.time()
-    new_solution = spatial_interchage_mk6(new_solution)
-    e_time = time.time()
 
-    new_graph = delivery_network_mk2(new_solution, True, "new_solution_" + str(number))
+    new_solution = greedy_fill_mk3(new_solution)
+    n_graph = delivery_network_mk2(new_solution, False)
+
+    new_solution = spatial_interchage_mk6(new_solution)
+
+
+    new_graph = delivery_network_mk2(new_solution, False)
     new_obj = cal_obj_mk2(new_solution)
     print new_obj
 
@@ -1167,22 +1160,34 @@ while temperature > 0.5:
                         
             
             
-print "solution"                
+print "solution"          
+e_time = time.time()
+c_time = e_time - s_time
+print "Computing time: ", c_time 
 solution_obj = cal_obj_mk2(solution_sites)
+r_num = random.randint(1, 999999999)
+f = open(path + "result_" + str(p) + "_" + str(r_num) +".txt", 'w')
 if solution_obj > best_solution[1]:
     print "final solution: ", solution_sites
     print "Objective value_r: ", solution_obj
     print "Covered population: ", cal_obj(solution_sites)
-    final_graph = delivery_network_mk2(solution_sites, True, "final_solution")
+    final_graph = delivery_network_mk2(solution_sites, True, "final_solution"+ "_" + str(p) + "_" + str(r_num))
+    f.write("final solution: " + str(solution_sites) + "\n")
+    f.write("objective value: " + str(solution_obj) + "\n")
+    f.write("covered population: " + str(cal_obj(solution_sites)) + "\n")
 else:
     print "final solution: ", best_solution[0]
     print "Objective value_r: ", best_solution[1]
     print "Covered population: ", cal_obj(best_solution[0])
-    final_graph = delivery_network_mk2(best_solution[0], True, "final_solution")
+    final_graph = delivery_network_mk2(best_solution[0], True, "final_solution"+ "_"  + str(p) + "_" +  str(r_num))
+    f.write("final solution: " + str(solution_sites) + "\n")
+    f.write("objective value: " + str(solution_obj) + "\n")
+    f.write("covered population: " + str(cal_obj(solution_sites)) + "\n")
+f.write("computing time: " + str(c_time))
 
 
             
-    
+f.close()
     
         
         
